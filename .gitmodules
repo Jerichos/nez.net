@@ -1,0 +1,3 @@
+[submodule "nez"]
+	path = ../nez
+	url = https://github.com/Jerichos/Nez.git
