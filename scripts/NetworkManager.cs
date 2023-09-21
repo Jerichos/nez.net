@@ -10,15 +10,27 @@ public class NetworkManager
     {
         _transport = transport;
     }
-    
-    public void SendPacket(byte[] data, int channelId)
+
+    public void Initialize()
     {
-        _transport.Send(data, channelId);
+        // Initialize your networking here
+        // For testing, you can use localhost
+        _transport.Connect("127.0.0.1");
     }
-    
-    public bool TryReceivePacket(out byte[] data, out int channelId)
+
+    public void Update()
     {
-        return _transport.TryReceive(out data, out channelId);
+        // This method will be called every frame to handle networking
+
+        // Example of sending some data
+        byte[] dataToSend = new byte[] { 1, 2, 3, 4 };
+        _transport.Send(dataToSend, 0);
+
+        // Example of receiving some data
+        if (_transport.TryReceive(out byte[] receivedData, out int channelId))
+        {
+            // Process the received data here
+        }
     }
     
     // TODO: Add more methods here
