@@ -1,0 +1,18 @@
+public static void CacheCommands()
+{
+    // Assume AssemblyList holds the assemblies you want to search in
+    foreach (var assembly in AssemblyList)
+    {
+        foreach (Type type in assembly.GetTypes())
+        {
+            foreach (MethodInfo method in type.GetMethods())
+            {
+                if (method.GetCustomAttributes(typeof(CommandAttribute), true).Length > 0)
+                {
+                    // Check if the method has the [Command] attribute
+                    commandMethods.Add(method.Name, method);
+                }
+            }
+        }
+    }
+}
