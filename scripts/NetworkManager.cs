@@ -25,25 +25,49 @@ public class NetworkManager
         _transport = transport;
     }
 
-    public void Initialize()
+    public void InitializeServer(int port)
     {
-        // Initialize your networking here
-        // For testing, you can use localhost
-        _transport.Connect("127.0.0.1");
+        _transport.InitializeServer(port);
     }
 
-    public void Update()
+    public void InitializeClient(string ipAddress, int port)
     {
-        // This method will be called every frame to handle networking
+        _transport.InitializeClient(ipAddress, port);
+    }
 
-        // Example of sending some data
-        byte[] dataToSend = new byte[] { 1, 2, 3, 4 };
-        _transport.Send(dataToSend, 0);
-
-        // Example of receiving some data
-        if (_transport.TryReceive(out byte[] receivedData, out int channelId))
+    public void Send(NetMessage message, ConnectionType connectionType)
+    {
+        if (connectionType == ConnectionType.Server)
         {
-            // Process the received data here
+            _transport.ServerSend(message);
+        }
+        else
+        {
+            _transport.ClientSend(message);
+        }
+    }
+
+    public NetMessage Receive(ConnectionType connectionType)
+    {
+        if (connectionType == ConnectionType.Server)
+        {
+            return _transport.ServerReceive();
+        }
+        else
+        {
+            return _transport.ClientReceive();
+        }
+    }
+
+    public void Close(ConnectionType connectionType)
+    {
+        if (connectionType == ConnectionType.Server)
+        {
+            _transport.CloseServer();
+        }
+        else
+        {
+            _transport.CloseClient();
         }
     }
     
