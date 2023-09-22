@@ -1,4 +1,5 @@
 ﻿using nez.net.transport;
+using nez.net.transport.socket;
 
 namespace nez.net;
 
@@ -27,47 +28,23 @@ public class NetworkManager
 
     public void InitializeServer(int port)
     {
-        _transport.InitializeServer(port);
+        _transport.StartServer(port);
     }
 
     public void InitializeClient(string ipAddress, int port)
     {
-        _transport.InitializeClient(ipAddress, port);
-    }
-
-    public void Send(NetMessage message, ConnectionType connectionType)
-    {
-        if (connectionType == ConnectionType.Server)
-        {
-            _transport.ServerSend(message);
-        }
-        else
-        {
-            _transport.ClientSend(message);
-        }
-    }
-
-    public NetMessage Receive(ConnectionType connectionType)
-    {
-        if (connectionType == ConnectionType.Server)
-        {
-            return _transport.ServerReceive();
-        }
-        else
-        {
-            return _transport.ClientReceive();
-        }
+        _transport.ConnectClient(ipAddress, port);
     }
 
     public void Close(ConnectionType connectionType)
     {
-        if (connectionType == ConnectionType.Server)
+        if (connectionType == ConnectionType.SERVER)
         {
-            _transport.CloseServer();
+            _transport.StopServer();
         }
         else
         {
-            _transport.CloseClient();
+            _transport.StopClient();
         }
     }
     

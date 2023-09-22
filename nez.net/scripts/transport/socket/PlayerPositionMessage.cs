@@ -1,5 +1,8 @@
+using nez.net.transport.socket;
+using ZeroFormatter;
+
 [ZeroFormattable]
-public class PlayerPositionMessage : BaseMessage
+public class PlayerPositionMessage : NetworkMessage
 {
     [Index(1)]
     public virtual float X { get; set; }

@@ -1,8 +1,12 @@
+using ZeroFormatter;
+
+namespace nez.net.transport.socket;
+
 [ZeroFormattable]
 public class NetworkMessage
 {
     [Index(0)]
-    public virtual int MessageType { get; set; }
+    public virtual uint NetworkID { get; set; }
     [Index(1)]
     public virtual long Timestamp { get; set; }
     [Index(2)]
