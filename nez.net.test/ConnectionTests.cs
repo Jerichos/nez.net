@@ -10,38 +10,64 @@ namespace nez.net.test
 public class ConnectionTests
 {
     private TaskCompletionSource<bool> _clientConnectCallbackCompleted;
+    
+    private SocketTransport _serverTransport;
+    private SocketTransport[] _clientTransports;
+    private SocketTransport _overLimitClient;
+    private SocketTransport _clientTransport;
+    
+    int maxConnections = 10; // Set your server's max connection limit
+
+    [SetUp]
+    public void Setup()
+    {
+        // instantiate all transports
+        _serverTransport = new SocketTransport();
+        _clientTransports = new SocketTransport[maxConnections];
+        for (int i = 0; i < maxConnections; i++)
+        {
+            _clientTransports[i] = new SocketTransport();
+        }
+        _overLimitClient = new SocketTransport();
+        _clientTransport = new SocketTransport();
+    }
+    
+    [TearDown]
+    public void TearDown()
+    {
+        // stop all transports
+        _serverTransport?.Server?.Stop();
+        for (int i = 0; i < _clientTransports.Length; i++)
+        {
+            _clientTransports[i]?.Client?.Stop();
+        }
+        _overLimitClient?.Client?.Stop();
+        _clientTransport?.Client?.Stop();
+    }
 
     [Test, Timeout(1000)]
     public async Task TestMaximumConnections()
     {
-        // Arrange
-        SocketTransport serverTransport = new SocketTransport();
-        int maxConnections = 10; // Set your server's max connection limit
-            
-        serverTransport.StartServer(5000);
-        serverTransport.Server.MaxConnections = maxConnections;
+        _serverTransport.Server.Start(5000);
+        _serverTransport.Server.MaxConnections = maxConnections;
         Thread.SpinWait(10);
-            
-        SocketTransport[] clientTransports = new SocketTransport[maxConnections];
             
         // Act
         for (int i = 0; i < maxConnections; i++)
         {
-            clientTransports[i] = new SocketTransport();
-            clientTransports[i].ConnectClient("127.0.0.1", 5000);
+            _clientTransports[i].Client.Start("127.0.0.1", 5000);
             Thread.SpinWait(10);
         }
             
         _clientConnectCallbackCompleted = new TaskCompletionSource<bool>();
         
-        SocketTransport overLimitClient = new SocketTransport();
-        overLimitClient.Client.EClientTransportChanged += code =>
+        _overLimitClient.Client.OnTransportMessage += code =>
         {
             if (code == TransportCode.MAXIMUM_CONNECTION_REACHED)
                 _clientConnectCallbackCompleted.SetResult(false);
         };
         
-        overLimitClient.ConnectClient("127.0.0.1", 5000);
+        _overLimitClient.Client.Start("127.0.0.1", 5000);
             
         await Task.WhenAll(_clientConnectCallbackCompleted.Task);
         // Assert
@@ -49,24 +75,21 @@ public class ConnectionTests
         Assert.IsFalse(_clientConnectCallbackCompleted.Task.Result);
 
         // Cleanup
-        serverTransport.StopServer();
+        _serverTransport.Server.Stop();
         for (int i = 0; i < maxConnections; i++)
         {
-            clientTransports[i].StopClient();
+            _clientTransports[i].Client.Stop();
         }
-        overLimitClient.StopClient();
+        _overLimitClient.Client.Stop();
     }
 
     [Test]
     public async Task TestFailedConnections()
     {
-        // Arrange
-        SocketTransport clientTransport = new SocketTransport();
-
         // Act
         _clientConnectCallbackCompleted = new TaskCompletionSource<bool>();
 
-        clientTransport.Client.EClientTransportChanged += code =>
+        _clientTransport.Client.OnTransportMessage += code =>
         {
             if (code != TransportCode.CLIENT_CONNECTED)
                 _clientConnectCallbackCompleted.SetResult(false);
@@ -74,16 +97,13 @@ public class ConnectionTests
                 _clientConnectCallbackCompleted.SetResult(true);
         };
         
-        clientTransport.ConnectClient("127.0.0.1", 1234);
+        _clientTransport.Client.Start("127.0.0.1", 1234);
         
         
         await Task.WhenAll(_clientConnectCallbackCompleted.Task);
         
         // Assert
         Assert.IsFalse(_clientConnectCallbackCompleted.Task.Result);
-
-        // Cleanup
-        clientTransport.StopClient();
     }
 }
 }

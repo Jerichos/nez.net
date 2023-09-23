@@ -1,25 +1,26 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using Nez;
-using Nez.AI.GOAP;
 
 namespace nez.net.components;
 
-public abstract class NetworkComponent : Component
+public abstract class NetworkComponent : Nez.Component
 {
-    public uint ComponentID { get; private set; }
-    
-    public bool IsServet { get; private set; }
-    public bool IsClient { get; private set; }
-    public bool IsLocalPlayer { get; private set; }
+    public Guid NetworkID { get; internal set; } // Unique ID to identify this component over the network
+    public NetworkIdentity NetworkIdentity { get; internal set; }
 
-    private static Dictionary<string, Action> _commandHandlers;
-    
-    // called by weaver
-    protected void SendCommandInternal(string functionFullName, int functionHashCode)
+    internal void RegisterComponent()
     {
-        CommandMessage commandMessage = new CommandMessage
-        {
-            
-        };
+        NetworkState.Instance.RegisterNetworkComponent(this);
+    }
+
+    internal void UnregisterComponent()
+    {
+        NetworkState.Instance.UnregisterNetworkComponent(NetworkID);
+    }
+
+    public override void OnAddedToEntity()
+    {
+        NetworkIdentity = Entity.GetOrCreateComponent<NetworkIdentity>();
     }
 }

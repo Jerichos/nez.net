@@ -15,9 +15,9 @@ namespace nez.net.test
         private TaskCompletionSource<bool> _clientTaskCompletionSource;
         private Stopwatch _totalTimer;
         private Stopwatch _pingTimer;
-        
-        NetworkMessage _pingMessage = new NetworkMessage { Payload = Encoding.ASCII.GetBytes("ping") };
-        NetworkMessage _pongMessage = new NetworkMessage { Payload = Encoding.ASCII.GetBytes("pong") };
+
+        private PingMessage _pingMessage = new PingMessage();
+        private PongMessage _pongMessage = new PongMessage();
 
         [SetUp]
         public void Setup()
@@ -29,8 +29,8 @@ namespace nez.net.test
         [TearDown]
         public void TearDown()
         {
-            _serverTransport.StopServer();
-            _clientTransport.StopClient();
+            _serverTransport.Server.Stop();
+            _clientTransport.Client.Stop();
         }
 
         [Test, Timeout(1000)]
@@ -40,14 +40,14 @@ namespace nez.net.test
             string serverAddress = "127.0.0.1";
 
             // Initialize
-            _serverTransport.Server.EServerReceive += ServerReceive;
-            _serverTransport.StartServer(port);
+            _serverTransport.Server.OnReceive += ServerReceive;
+            _serverTransport.Server.Start(port);
 
             // Wait for the server to start
             await Task.Delay(10);
             
-            _clientTransport.Client.EClientReceive += ClientReceive;
-            _clientTransport.ConnectClient(serverAddress, port);
+            _clientTransport.Client.OnReceive += ClientReceive;
+            _clientTransport.Client.Start(serverAddress, port);
 
             // Create a stopwatch to measure time
             _totalTimer = new Stopwatch();
@@ -66,7 +66,7 @@ namespace nez.net.test
                 _clientTaskCompletionSource = new TaskCompletionSource<bool>();
                 
                 _pingTimer.Restart();
-                _clientTransport.Client.ClientSend(_pingMessage);
+                _clientTransport.Client.Send(_pingMessage);
                 await Task.WhenAll(_serverTaskCompletionSource.Task, _clientTaskCompletionSource.Task);
                 Console.WriteLine($"ping {i} time: {_pingTimer.ElapsedMilliseconds} ms");
             }
@@ -77,17 +77,17 @@ namespace nez.net.test
         
         private void ServerReceive(NetworkMessage message)
         {
-            if (Encoding.ASCII.GetString(message.Payload) == "ping")
+            if (message is PingMessage)
             {
-                _serverTransport.Server.ServerSend(_pongMessage);
+                _serverTransport.Server.Send(_pongMessage);
                 _serverTaskCompletionSource.SetResult(true);
             }
         }
 
         private void ClientReceive(NetworkMessage message)
         {
-            Assert.AreEqual("pong", Encoding.ASCII.GetString(message.Payload));
-            _clientTaskCompletionSource.SetResult(true);
+            if(message is PongMessage)
+                _clientTaskCompletionSource.SetResult(true);
         }
     }
 }

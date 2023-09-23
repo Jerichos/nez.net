@@ -1,41 +1,36 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using nez.net.components;
 using ZeroFormatter;
+using ZeroFormatter.Formatters;
 
-namespace nez.net.transport.socket;
-
+namespace nez.net.transport.socket
+{
 public delegate void Delegate<in T>(T arg);
 
 public class SocketTransport
 {
-    public SocketServer Server { get; private set; }
-    public SocketClient Client { get; private set; }
-    
+    public ISocketServerHandler Server { get; }
+    public ISocketClientHandler Client { get; }
+
     public bool IsServerRunning => Server.IsRunning;
     public bool IsClientRunning => Client.IsRunning;
-
+    
     public SocketTransport()
     {
         Server = new SocketServer();
         Client = new SocketClient();
-        ZeroFormatterSerializer.Serialize(new NetworkMessage());
+        
+        Formatter<DefaultResolver, Dictionary<Guid, NetworkIdentity>>.Register(new NetworkStateFormatter<DefaultResolver>());
+        Formatter<DefaultResolver, Uri>.Register(new UriFormatter<DefaultResolver>());
+        ZeroFormatterSerializer.Serialize(new TransportMessage());
     }
 
-    public void StartServer(int port)
+    public void Stop()
     {
-        Server.StartServer(port);
+        Server?.Stop();
+        Client?.Stop();
     }
-    
-    public void StopServer()
-    {
-        Server?.StopServer();
-    }
-
-    public void ConnectClient(string address, int port)
-    {
-        Client.ConnectClient(address, port);
-    }
-
-    public void StopClient()
-    {
-        Client?.StopClient();
-    }
+}
 }

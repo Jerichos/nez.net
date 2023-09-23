@@ -3,25 +3,32 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using Nez;
+using nez.net.components;
 using ZeroFormatter;
 
 namespace nez.net.transport.socket;
 
-public class SocketServer
+public class SocketServer : ISocketServerHandler
 {
     public bool IsRunning => _serverSocket != null && _serverSocket.IsBound;
     public int MaxConnections { get; set; } = 10;
-    
-    public event Delegate<NetworkMessage> EServerReceive;
-    
+
+    public event Delegate<NetworkMessage> OnReceive;
+    public event Delegate<TransportCode> OnTransportMessage;
+
     private Socket _serverSocket;
     private IPEndPoint _ipEndPoint;
-    private Dictionary<uint, Socket> _clientSockets = new();
-    
+    private readonly Dictionary<uint, Socket> _clientSockets = new();
+    private readonly Dictionary<Socket, uint> _clientIDs = new();
     private bool _isClosing;
+
+    public void Stop()
+    {
+        StopServer();
+    }
     
     // Initialize the server socket and start listening
-    public void StartServer(int port)
+    public void Start(int port)
     {
         if (IsRunning)
         {
@@ -38,7 +45,7 @@ public class SocketServer
         _isClosing = false;
     }
     
-    public void StopServer()
+    private void StopServer()
     {
         if (!IsRunning)
         {
@@ -58,6 +65,9 @@ public class SocketServer
         {
             clientSocket.Value.Close();
         }
+        
+        _clientSockets.Clear();
+        _clientIDs.Clear();
 
         _serverSocket.Close();
         _serverSocket = null;
@@ -88,33 +98,55 @@ public class SocketServer
         {
             Socket clientSocket = _serverSocket.EndAccept(ar);
             uint clientID = (uint)_clientSockets.Count + 1;
+            
             _clientSockets.Add(clientID, clientSocket);
+            _clientIDs.Add(clientSocket, clientID);
 
             byte[] buffer = new byte[1024];
             clientSocket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, ServerReceiveCallback, Tuple.Create(clientSocket, buffer));
+            
+            OnClientConnected(clientID);
         }
 
         // Continue accepting more clients.
         _serverSocket.BeginAccept(ServerAcceptCallback, null);
     }
     
-    public void ServerSend(NetworkMessage message)
+    public void Send(NetworkMessage message)
     {
         foreach (var clientSocket in _clientSockets)
         {
-            ServerSend(message, clientSocket.Value);
+            Send(clientSocket.Value, message);
         }
     }
 
-    public void ServerSend(NetworkMessage message, uint clientID)
+    public void Send(uint clientID, NetworkMessage message)
     {
-        ServerSend(message, _clientSockets[clientID]);
+        Send(_clientSockets[clientID], message);
     }
 
-    public void ServerSend(NetworkMessage message, Socket clientSocket)
+    public void OnClientConnected(uint clientId)
+    {
+        NetworkStateMessage networkStateMessage = new NetworkStateMessage
+        {
+            NetworkEntities = new Dictionary<Guid, NetworkIdentity>(NetworkState.Instance.GetNetworkEntities()),
+            NetworkComponents = new Dictionary<Guid, NetworkComponent>(NetworkState.Instance.GetNetworkComponents())
+        };
+        
+        Send(clientId, networkStateMessage);
+    }
+
+    // private void Send(uint clientSocket, NetworkStateMessage uriMessage)
+    // {
+    //     // serialize message and send
+    //     byte[] serializedMessage = ZeroFormatterSerializer.Serialize(uriMessage);
+    //     _clientSockets[clientSocket].BeginSend(serializedMessage, 0, serializedMessage.Length, SocketFlags.None, SendCallback, _clientSockets[clientSocket]);
+    // }
+
+    private void Send(Socket clientSocket, NetworkMessage message)
     {
         byte[] serializedMessage = ZeroFormatterSerializer.Serialize(message);
-        clientSocket.BeginSend(serializedMessage, 0, serializedMessage.Length, SocketFlags.None, new AsyncCallback(SendCallback), clientSocket);
+        clientSocket.BeginSend(serializedMessage, 0, serializedMessage.Length, SocketFlags.None, SendCallback, clientSocket);
     }
     
     private void SendCallback(IAsyncResult ar)
@@ -139,15 +171,32 @@ public class SocketServer
             byte[] actualReceived = new byte[receivedLength];
             Array.Copy(buffer, actualReceived, receivedLength);
 
-            NetworkMessage message = ZeroFormatterSerializer.Deserialize<NetworkMessage>(actualReceived);
-            EServerReceive?.Invoke(message);
+            NetworkMessage received = ZeroFormatterSerializer.Deserialize<NetworkMessage>(actualReceived);
 
-            // Process the received message
-            // For example, you can add it to a queue for another component to handle,
-            // or directly process the message here based on its type.
-            
+            switch (received.Type)
+            {
+                case MessageType.TRANSPORT:
+                    var transportMessage = (TransportMessage)received;
+                    // Process transport message
+                    break;
+                case MessageType.MIRROR:
+                    var mirrorMessage = (MirrorMessage)received;
+                    Send(clientSocket, mirrorMessage);
+                    // Process mirror message
+                    break;
+            }
+
+            RaiseEvent(OnReceive, received);
+
             // Start another receive operation
             clientSocket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, ServerReceiveCallback, state);
         }
+    }
+    
+    // Safely invoke an event
+    protected virtual void RaiseEvent<T>(Delegate<T> eventToRaise, T arg)
+    {
+        Delegate<T> handler = eventToRaise;
+        handler?.Invoke(arg);
     }
 }

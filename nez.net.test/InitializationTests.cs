@@ -12,14 +12,14 @@ public class InitializationTests
         SocketTransport socketTransport = new SocketTransport();
 
         // Act
-        socketTransport.StartServer(5000);
+        socketTransport.Server.Start(5000);
     
         // Assert
         // Replace the assertion below with the actual validation.
         // For example, you might want to check a boolean that confirms the server is running.
         Assert.IsTrue(socketTransport.IsServerRunning);
         
-        socketTransport.StopServer();
+        socketTransport.Server.Stop();
     }
     
     [Test]
@@ -30,9 +30,9 @@ public class InitializationTests
         SocketTransport clientTransport = new SocketTransport();
 
         // Act
-        serverTransport.StartServer(5000);
+        serverTransport.Server.Start(5000);
         Thread.SpinWait(10);
-        clientTransport.ConnectClient("127.0.0.1", 5000);
+        clientTransport.Client.Start("127.0.0.1", 5000);
         Thread.SpinWait(10);
     
         // Assert
@@ -40,7 +40,7 @@ public class InitializationTests
         // For example, you could check if the client has a valid socket connection.
         Assert.IsTrue(clientTransport.IsClientRunning);
         
-        serverTransport.StopServer();
-        clientTransport.StopClient();
+        serverTransport.Server.Stop();
+        clientTransport.Client.Stop();
     }
 }

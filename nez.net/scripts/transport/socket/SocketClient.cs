@@ -5,23 +5,33 @@ using ZeroFormatter;
 
 namespace nez.net.transport.socket;
 
-public class SocketClient
+public class SocketClient : ISocketClientHandler
 {
     public bool IsRunning => _clientSocket != null && _clientSocket.Connected;
-    
-    public event Delegate<NetworkMessage> EClientReceive;
-    public event Delegate<TransportCode> EClientTransportChanged; 
+
+    public event Delegate<NetworkMessage> OnReceive;
+    public event Delegate<TransportCode> OnTransportMessage; 
     
     private Socket _clientSocket;
     private bool _isClosing;
     
+    public void Start(string address, int port)
+    {
+        ConnectClient(address, port);
+    }
+    
+    public void Stop()
+    {
+        StopClient();
+    }
+    
     // Initialize the client socket and connect to the server
-    public void ConnectClient(string ipAddress, int port)
+    private void ConnectClient(string ipAddress, int port)
     {
         if (IsRunning)
         {
             Debug.Warn("client is already running");
-            EClientTransportChanged?.Invoke(TransportCode.CLIENT_ALREADY_CONNECTED);
+            OnTransportMessage?.Invoke(TransportCode.CLIENT_ALREADY_CONNECTED);
             return;
         }
 
@@ -43,41 +53,38 @@ public class SocketClient
                 _clientSocket.EndConnect(result);
                 byte[] buffer = new byte[1024];
                 _clientSocket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, ClientReceiveCallback, Tuple.Create(buffer, _clientSocket));
-                EClientTransportChanged?.Invoke(TransportCode.CLIENT_CONNECTED);
+                OnTransportMessage?.Invoke(TransportCode.CLIENT_CONNECTED);
             }
             else
             {
                 _clientSocket.Close();
                 Debug.Warn("connection timed out");
-                EClientTransportChanged?.Invoke(TransportCode.CLIENT_CONNECTION_TIMEOUT);
+                OnTransportMessage?.Invoke(TransportCode.CLIENT_CONNECTION_TIMEOUT);
             }
         }
         catch (SocketException e)
         {
-            if (e.SocketErrorCode == SocketError.ConnectionRefused)
-            {
-                // Handle connection refused or max connections reached
-                Debug.Warn("Connection refused by the server");
-                EClientTransportChanged?.Invoke(TransportCode.CLIENT_CONNECTION_REFUSED);
-            }
-            else
-            {
-                // Handle other socket exceptions
-                Debug.Warn($"SocketException: {e}");
-                EClientTransportChanged?.Invoke(TransportCode.CLIENT_ERROR);
-            }
+            Debug.Warn($"SocketException: {e}");
+            Debug.Warn($"Stack Trace: {e.StackTrace}");
+            OnTransportMessage?.Invoke(TransportCode.CLIENT_ERROR);
+        }
+        catch (TimeoutException e)
+        {
+            Debug.Warn($"TimeoutException: {e}");
+            Debug.Warn($"Stack Trace: {e.StackTrace}");
+            OnTransportMessage?.Invoke(TransportCode.CLIENT_CONNECTION_TIMEOUT);
         }
         catch (Exception e)
         {
-            // Handle other general exceptions
-            Debug.Warn($"An error occurred: {e}");
-            EClientTransportChanged?.Invoke(TransportCode.CLIENT_ERROR);
+            Debug.Warn($"An unknown error occurred: {e}");
+            Debug.Warn($"Stack Trace: {e.StackTrace}");
+            OnTransportMessage?.Invoke(TransportCode.CLIENT_ERROR);
         }
 
         _isClosing = false;
     }
         
-    public void ClientSend(NetworkMessage message)
+    public void Send(NetworkMessage message)
     {
         byte[] serializedMessage = ZeroFormatterSerializer.Serialize(message);
         _clientSocket.BeginSend(serializedMessage, 0, serializedMessage.Length, SocketFlags.None, ClientSendCallback, _clientSocket);
@@ -108,7 +115,7 @@ public class SocketClient
             TransportMessage transportMessage = ZeroFormatterSerializer.Deserialize<TransportMessage>(actualReceived);
             if (transportMessage != null)
             {
-                EClientTransportChanged?.Invoke(transportMessage.Code);
+                RaiseEvent(OnTransportMessage, transportMessage.Code);
                 
                 switch (transportMessage.Code)
                 {
@@ -122,8 +129,30 @@ public class SocketClient
             }
 
             NetworkMessage message = ZeroFormatterSerializer.Deserialize<NetworkMessage>(actualReceived);
-            if(message != null)
-                EClientReceive?.Invoke(message);
+            
+            if (message != null)
+            {
+                RaiseEvent(OnReceive, message);
+                
+                switch (message.Type)
+                {
+                    case MessageType.NETWORK_STATE:
+                        var gameStateMessage = (NetworkStateMessage)message;
+                        // Process game state message
+                        NetworkState.Instance.SetNetworkState(gameStateMessage.NetworkEntities, gameStateMessage.NetworkComponents);
+                        break;
+                    case MessageType.TRANSPORT:
+                        break;
+                    case MessageType.MIRROR:
+                        break;
+                    case MessageType.PING:
+                        break;
+                    case MessageType.PONG:
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
 
             // You can add additional logic to process the message here if needed
             // Start another receive operation
@@ -131,22 +160,29 @@ public class SocketClient
         }
     }
 
-    public void StopClient()
+    private void StopClient()
     {
-        // if(!IsClient)
-        // {
-        //     Debug.Log("client is not running");
-        //     return;
-        // }
-
         if (_isClosing)
         {
             Debug.Log("client is already closing");
             return;
         }
         
+        if (!IsRunning)
+        {
+            Debug.Log("client is not running");
+            return;
+        }
+        
         _isClosing = true;
         _clientSocket.Close();
         _clientSocket = null;
+    }
+    
+    // Safely invoke an event
+    protected void RaiseEvent<T>(Delegate<T> eventToRaise, T arg)
+    {
+        Delegate<T> handler = eventToRaise;
+        handler?.Invoke(arg);
     }
 }
