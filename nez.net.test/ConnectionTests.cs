@@ -19,7 +19,7 @@ public class ConnectionTests
         int maxConnections = 10; // Set your server's max connection limit
             
         serverTransport.StartServer(5000);
-        serverTransport.MaxConnections = maxConnections;
+        serverTransport.Server.MaxConnections = maxConnections;
         Thread.SpinWait(10);
             
         SocketTransport[] clientTransports = new SocketTransport[maxConnections];
@@ -35,7 +35,7 @@ public class ConnectionTests
         _clientConnectCallbackCompleted = new TaskCompletionSource<bool>();
         
         SocketTransport overLimitClient = new SocketTransport();
-        overLimitClient.EClientTransportChanged += code =>
+        overLimitClient.Client.EClientTransportChanged += code =>
         {
             if (code == TransportCode.MAXIMUM_CONNECTION_REACHED)
                 _clientConnectCallbackCompleted.SetResult(false);
@@ -66,7 +66,7 @@ public class ConnectionTests
         // Act
         _clientConnectCallbackCompleted = new TaskCompletionSource<bool>();
 
-        clientTransport.EClientTransportChanged += code =>
+        clientTransport.Client.EClientTransportChanged += code =>
         {
             if (code != TransportCode.CLIENT_CONNECTED)
                 _clientConnectCallbackCompleted.SetResult(false);
@@ -75,6 +75,7 @@ public class ConnectionTests
         };
         
         clientTransport.ConnectClient("127.0.0.1", 1234);
+        
         
         await Task.WhenAll(_clientConnectCallbackCompleted.Task);
         

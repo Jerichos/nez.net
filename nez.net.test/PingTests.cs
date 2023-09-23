@@ -33,15 +33,21 @@ namespace nez.net.test
             _clientTransport.StopClient();
         }
 
-        [Test]
+        [Test, Timeout(1000)]
         public async Task TestPingPong()
         {
             int port = 8888;
             string serverAddress = "127.0.0.1";
 
             // Initialize
-            SetupServer(port);
-            SetupClient(serverAddress, port);
+            _serverTransport.Server.EServerReceive += ServerReceive;
+            _serverTransport.StartServer(port);
+
+            // Wait for the server to start
+            await Task.Delay(10);
+            
+            _clientTransport.Client.EClientReceive += ClientReceive;
+            _clientTransport.ConnectClient(serverAddress, port);
 
             // Create a stopwatch to measure time
             _totalTimer = new Stopwatch();
@@ -50,9 +56,6 @@ namespace nez.net.test
             // Create TaskCompletionSources
             _serverTaskCompletionSource = new TaskCompletionSource<bool>();
             _clientTaskCompletionSource = new TaskCompletionSource<bool>();
-
-            // Wait for the server to start
-            await Task.Delay(2000);
 
             // Start timer
             _totalTimer.Start();
@@ -63,7 +66,7 @@ namespace nez.net.test
                 _clientTaskCompletionSource = new TaskCompletionSource<bool>();
                 
                 _pingTimer.Restart();
-                _clientTransport.ClientSend(_pingMessage);
+                _clientTransport.Client.ClientSend(_pingMessage);
                 await Task.WhenAll(_serverTaskCompletionSource.Task, _clientTaskCompletionSource.Task);
                 Console.WriteLine($"ping {i} time: {_pingTimer.ElapsedMilliseconds} ms");
             }
@@ -72,25 +75,13 @@ namespace nez.net.test
             _totalTimer.Stop();
         }
         
-        private void SetupServer(int port)
-        {
-            _serverTransport.EServerReceive += ServerReceive;
-            _serverTransport.StartServer(port);
-        }
-
         private void ServerReceive(NetworkMessage message)
         {
             if (Encoding.ASCII.GetString(message.Payload) == "ping")
             {
-                _serverTransport.ServerSend(_pongMessage);
+                _serverTransport.Server.ServerSend(_pongMessage);
                 _serverTaskCompletionSource.SetResult(true);
             }
-        }
-
-        private void SetupClient(string serverAddress, int port)
-        {
-            _clientTransport.EClientReceive += ClientReceive;
-            _clientTransport.ConnectClient(serverAddress, port);
         }
 
         private void ClientReceive(NetworkMessage message)

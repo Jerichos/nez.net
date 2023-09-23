@@ -17,7 +17,7 @@ public class InitializationTests
         // Assert
         // Replace the assertion below with the actual validation.
         // For example, you might want to check a boolean that confirms the server is running.
-        Assert.IsTrue(socketTransport.IsServer);
+        Assert.IsTrue(socketTransport.IsServerRunning);
         
         socketTransport.StopServer();
     }
@@ -38,7 +38,7 @@ public class InitializationTests
         // Assert
         // Replace the assertion below with the actual validation.
         // For example, you could check if the client has a valid socket connection.
-        Assert.IsTrue(clientTransport.IsClient);
+        Assert.IsTrue(clientTransport.IsClientRunning);
         
         serverTransport.StopServer();
         clientTransport.StopClient();
