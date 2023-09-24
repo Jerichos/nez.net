@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using nez.net.components;
 using ZeroFormatter;
@@ -16,13 +15,21 @@ public class SocketTransport
 
     public bool IsServerRunning => Server.IsRunning;
     public bool IsClientRunning => Client.IsRunning;
+
+    public int ReceiveBufferSize { get; set; } = 2048; // 2kb, default was 1024
+    public int SendBufferSize { get; set; } = 2048; // 2kb, default was 1024
     
     public SocketTransport()
     {
-        Server = new SocketServer();
-        Client = new SocketClient();
+        Server = new SocketServer(ReceiveBufferSize, SendBufferSize);
+        Client = new SocketClient(ReceiveBufferSize, SendBufferSize);
+        
+        NetworkMessage.PreCalculateBufferSizes();
         
         Formatter<DefaultResolver, Dictionary<Guid, NetworkIdentity>>.Register(new NetworkStateFormatter<DefaultResolver>());
+        Formatter<DefaultResolver, NetworkIdentity>.Register(new NetworkIdentityFormatter<DefaultResolver>());
+        Formatter<DefaultResolver, NetworkComponent>.Register(new NetworkComponentFormatter<DefaultResolver>());
+
         Formatter<DefaultResolver, Uri>.Register(new UriFormatter<DefaultResolver>());
         ZeroFormatterSerializer.Serialize(new TransportMessage());
     }

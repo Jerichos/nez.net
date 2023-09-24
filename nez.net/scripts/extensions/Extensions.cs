@@ -1,4 +1,5 @@
 ﻿using Nez;
+using nez.net.components;
 
 namespace nez.net.extensions;
 
@@ -25,6 +26,21 @@ public static class Extensions
             entity.AddComponent(component);
         }
 
+        return component;
+    }
+    
+    // add NetworkComponent T to entity, only if it has NetworkIdentity
+    public static T AddNetworkComponent<T>(this Entity entity, T component) where T : NetworkComponent, new()
+    {
+        var networkIdentity = entity.GetComponent<NetworkIdentity>();
+
+        if (networkIdentity == null)
+        {
+            throw new System.Exception("Entity does not have NetworkIdentity");
+        }
+
+        entity.AddComponent(component);
+        component.NetworkIdentity = networkIdentity;
         return component;
     }
 }

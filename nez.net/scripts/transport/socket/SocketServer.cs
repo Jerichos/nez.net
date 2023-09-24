@@ -21,11 +21,24 @@ public class SocketServer : ISocketServerHandler
     private readonly Dictionary<uint, Socket> _clientSockets = new();
     private readonly Dictionary<Socket, uint> _clientIDs = new();
     private bool _isClosing;
+    
+    private readonly int _sendBufferSize;
+    private readonly int _receiveBufferSize;
+
+    public SocketServer(int receiveBufferSize, int sendBufferSize)
+    {
+        _receiveBufferSize = receiveBufferSize;
+        _sendBufferSize = sendBufferSize;
+
+        NetworkState = new NetworkState();
+    }
 
     public void Stop()
     {
         StopServer();
     }
+    
+    public NetworkState NetworkState { get; set; }
     
     // Initialize the server socket and start listening
     public void Start(int port)
@@ -44,7 +57,8 @@ public class SocketServer : ISocketServerHandler
         
         _isClosing = false;
     }
-    
+
+
     private void StopServer()
     {
         if (!IsRunning)
@@ -102,7 +116,7 @@ public class SocketServer : ISocketServerHandler
             _clientSockets.Add(clientID, clientSocket);
             _clientIDs.Add(clientSocket, clientID);
 
-            byte[] buffer = new byte[1024];
+            byte[] buffer = new byte[_receiveBufferSize];
             clientSocket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, ServerReceiveCallback, Tuple.Create(clientSocket, buffer));
             
             OnClientConnected(clientID);
@@ -129,23 +143,25 @@ public class SocketServer : ISocketServerHandler
     {
         NetworkStateMessage networkStateMessage = new NetworkStateMessage
         {
-            NetworkEntities = new Dictionary<Guid, NetworkIdentity>(NetworkState.Instance.GetNetworkEntities()),
-            NetworkComponents = new Dictionary<Guid, NetworkComponent>(NetworkState.Instance.GetNetworkComponents())
+            NetworkEntities = new Dictionary<Guid, NetworkIdentity>(NetworkState.GetNetworkEntities()),
+            NetworkComponents = new Dictionary<Guid, NetworkComponent>(NetworkState.GetNetworkComponents())
         };
         
         Send(clientId, networkStateMessage);
     }
 
-    // private void Send(uint clientSocket, NetworkStateMessage uriMessage)
-    // {
-    //     // serialize message and send
-    //     byte[] serializedMessage = ZeroFormatterSerializer.Serialize(uriMessage);
-    //     _clientSockets[clientSocket].BeginSend(serializedMessage, 0, serializedMessage.Length, SocketFlags.None, SendCallback, _clientSockets[clientSocket]);
-    // }
-
     private void Send(Socket clientSocket, NetworkMessage message)
     {
         byte[] serializedMessage = ZeroFormatterSerializer.Serialize(message);
+        
+        if(serializedMessage.Length > _sendBufferSize)
+        {
+            // Handle message size exceeding buffer size.
+            // You can either break it into smaller messages, or resize the buffer.
+            Debug.Warn($"Message size {serializedMessage.Length} exceeds buffer size {_sendBufferSize}. Consider resizing the buffer or breaking the message into smaller parts.");
+            return;
+        }
+        
         clientSocket.BeginSend(serializedMessage, 0, serializedMessage.Length, SocketFlags.None, SendCallback, clientSocket);
     }
     

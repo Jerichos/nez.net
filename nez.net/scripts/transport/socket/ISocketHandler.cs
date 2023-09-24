@@ -14,6 +14,8 @@ public interface ISocketServerHandler : ISocketHandler
 {
     int MaxConnections { get; set; }
     void Start(int port);
+
+    public NetworkState NetworkState { get; set; }
     
     // send to all clients
     void Send(NetworkMessage message);
@@ -27,5 +29,6 @@ public interface ISocketClientHandler : ISocketHandler
 {
     void Start(string ipAddress, int port);
     void Send(NetworkMessage message);
+    public NetworkState NetworkState { get; set; }
 }
 }

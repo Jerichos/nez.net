@@ -14,6 +14,17 @@ public class SocketClient : ISocketClientHandler
     
     private Socket _clientSocket;
     private bool _isClosing;
+    private readonly int _sendBufferSize;
+    private readonly int _receiveBufferSize;
+
+    public NetworkState NetworkState { get; set; }
+    
+    public SocketClient(int receiveBufferSize, int sendBufferSize)
+    {
+        _receiveBufferSize = receiveBufferSize;
+        _sendBufferSize = sendBufferSize;
+        NetworkState = new NetworkState();
+    }
     
     public void Start(string address, int port)
     {
@@ -51,7 +62,7 @@ public class SocketClient : ISocketClientHandler
             if (result.IsCompleted)
             {
                 _clientSocket.EndConnect(result);
-                byte[] buffer = new byte[1024];
+                byte[] buffer = new byte[_receiveBufferSize];
                 _clientSocket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, ClientReceiveCallback, Tuple.Create(buffer, _clientSocket));
                 OnTransportMessage?.Invoke(TransportCode.CLIENT_CONNECTED);
             }
@@ -112,36 +123,30 @@ public class SocketClient : ISocketClientHandler
             byte[] actualReceived = new byte[receivedLength];
             Array.Copy(buffer, actualReceived, receivedLength);
             
-            TransportMessage transportMessage = ZeroFormatterSerializer.Deserialize<TransportMessage>(actualReceived);
-            if (transportMessage != null)
-            {
-                RaiseEvent(OnTransportMessage, transportMessage.Code);
-                
-                switch (transportMessage.Code)
-                {
-                    case TransportCode.MAXIMUM_CONNECTION_REACHED:
-                        StopClient();
-                        return;
-                    default:
-                        Debug.Warn("transport message not handled: " + transportMessage.Code);
-                        break;
-                }
-            }
-
             NetworkMessage message = ZeroFormatterSerializer.Deserialize<NetworkMessage>(actualReceived);
             
             if (message != null)
             {
-                RaiseEvent(OnReceive, message);
-                
                 switch (message.Type)
                 {
                     case MessageType.NETWORK_STATE:
                         var gameStateMessage = (NetworkStateMessage)message;
+                        
                         // Process game state message
-                        NetworkState.Instance.SetNetworkState(gameStateMessage.NetworkEntities, gameStateMessage.NetworkComponents);
+                        NetworkState.SetNetworkState(gameStateMessage.NetworkEntities, gameStateMessage.NetworkComponents);
                         break;
                     case MessageType.TRANSPORT:
+                        var transportMessage = (TransportMessage)message;
+                        RaiseEvent(OnTransportMessage, transportMessage.Code);
+                        switch (transportMessage.Code)
+                        {
+                            case TransportCode.MAXIMUM_CONNECTION_REACHED:
+                                StopClient();
+                                return;
+                            default:
+                                Debug.Warn("transport message not handled: " + transportMessage.Code);
+                                break;
+                        }
                         break;
                     case MessageType.MIRROR:
                         break;
@@ -152,6 +157,8 @@ public class SocketClient : ISocketClientHandler
                     default:
                         throw new ArgumentOutOfRangeException();
                 }
+                
+                RaiseEvent(OnReceive, message);
             }
 
             // You can add additional logic to process the message here if needed

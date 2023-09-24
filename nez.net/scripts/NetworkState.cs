@@ -1,22 +1,13 @@
 ﻿using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using Nez;
 using nez.net.components;
 
 namespace nez.net
 {
 public class NetworkState
 {
-    private static NetworkState _instance;
-
-    public static NetworkState Instance
-    {
-        get
-        {
-            return _instance ??= new NetworkState();
-        }
-    }
-
     private readonly ConcurrentDictionary<Guid, NetworkIdentity> _networkEntities = new();
     private readonly ConcurrentDictionary<Guid, NetworkComponent> _networkComponents = new();
         
@@ -34,10 +25,10 @@ public class NetworkState
         
     internal void RegisterNetworkComponent(NetworkComponent networkComponent)
     {
-        var newGuid = Guid.NewGuid();
-        networkComponent.NetworkID = newGuid;
+        networkComponent.ComponentID = Guid.NewGuid();
+        networkComponent.IdentityID = networkComponent.NetworkIdentity.NetworkID;
         
-        if (!_networkComponents.TryAdd(networkComponent.NetworkID, networkComponent))
+        if (!_networkComponents.TryAdd(networkComponent.ComponentID, networkComponent))
         {
             // Handle error: duplicate ID
             throw new System.Exception("NetworkID already registered");
@@ -92,6 +83,11 @@ public class NetworkState
             {
                 // Create new entity
                 // Example: CreateEntity(receivedNetworkIdentity);
+                Entity entity = new Entity();
+                entity.AddComponent(receivedNetworkIdentity);
+                
+                // TODO: add entity to a scene
+                
                 _networkEntities.TryAdd(networkEntityPair.Key, receivedNetworkIdentity);
             }
         }
@@ -121,6 +117,11 @@ public class NetworkState
             {
                 // Create new component
                 // Example: CreateComponent(receivedNetworkComponent);
+                
+                // get matching network indentity
+                NetworkIdentity networkIdentity = GetNetworkEntity(receivedNetworkComponent.IdentityID);
+                networkIdentity.Entity.AddComponent(receivedNetworkComponent);
+                
                 _networkComponents.TryAdd(networkComponentPair.Key, receivedNetworkComponent);
             }
         }
@@ -143,6 +144,16 @@ public class NetworkState
         ConcurrentDictionary<Guid, NetworkComponent> concurrentNetworkComponents = new ConcurrentDictionary<Guid, NetworkComponent>(networkComponents);
 
         SetNetworkState(concurrentNetworkEntities, concurrentNetworkComponents);
+    }
+
+    public void UpdateScene(Scene clientScene)
+    {
+        // iterate thru network identities and add entities to the scene
+        foreach (var networkEntityPair in _networkEntities)
+        {
+            NetworkIdentity networkIdentity = networkEntityPair.Value;
+            clientScene.AddEntity(networkIdentity.Entity);
+        }
     }
 }
 }
