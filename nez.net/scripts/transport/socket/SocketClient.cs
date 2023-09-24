@@ -43,34 +43,34 @@ public class SocketClient : SocketHandler, ISocketClientHandler
             {
                 Socket.EndConnect(result);
                 byte[] buffer = new byte[MaxBufferSize];
-                Socket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, HandleReceive, Tuple.Create(buffer, Socket));
+                Socket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, HandleReceive, Tuple.Create(Socket, buffer));
                 IsClosing = false;
-                OnTransportMessage?.Invoke(TransportCode.CLIENT_CONNECTED);
+                RaiseEvent(OnTransportMessage, TransportCode.CLIENT_CONNECTED);
             }
             else
             {
                 Socket.Close();
                 Debug.Warn("connection timed out");
-                OnTransportMessage?.Invoke(TransportCode.CLIENT_CONNECTION_TIMEOUT);
+                RaiseEvent(OnTransportMessage, TransportCode.CLIENT_CONNECTION_TIMEOUT);
             }
         }
         catch (SocketException e)
         {
             Debug.Warn($"SocketException: {e}");
             Debug.Warn($"Stack Trace: {e.StackTrace}");
-            OnTransportMessage?.Invoke(TransportCode.CLIENT_ERROR);
+            RaiseEvent(OnTransportMessage, TransportCode.CLIENT_ERROR);
         }
         catch (TimeoutException e)
         {
             Debug.Warn($"TimeoutException: {e}");
             Debug.Warn($"Stack Trace: {e.StackTrace}");
-            OnTransportMessage?.Invoke(TransportCode.CLIENT_CONNECTION_TIMEOUT);
+            RaiseEvent(OnTransportMessage, TransportCode.CLIENT_CONNECTION_TIMEOUT);
         }
         catch (Exception e)
         {
             Debug.Warn($"An unknown error occurred: {e}");
             Debug.Warn($"Stack Trace: {e.StackTrace}");
-            OnTransportMessage?.Invoke(TransportCode.CLIENT_ERROR);
+            RaiseEvent(OnTransportMessage, TransportCode.CLIENT_ERROR);
         }
     }
 }

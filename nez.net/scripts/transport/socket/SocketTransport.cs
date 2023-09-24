@@ -25,11 +25,8 @@ public class SocketTransport
         
         Formatter<DefaultResolver, NetworkIdentity>.Register(new NetworkIdentityFormatter<DefaultResolver>());
         Formatter<DefaultResolver, NetworkComponent>.Register(new NetworkComponentFormatter<DefaultResolver>());
-        var bla =ZeroFormatterSerializer.Serialize(new TransportMessage
-        {
-            MessageId = 1,
-            Code = TransportCode.SERVER_STARTED
-        });
+
+        ZeroFormatterSerializer.Serialize(new NetworkStateMessage());
     }
 
     public void Stop()

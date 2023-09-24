@@ -60,7 +60,7 @@ namespace nez.net.test
                 
                 clientNames[index] = $"Client-{i}";
                 
-                clientTransport.Client.OnReceive += (msg) => ClientReceive(msg, tcs, clientNames[index], receivedMessages);
+                clientTransport.Client.OnMessageReceived += (msg) => ClientReceive(msg, tcs, clientNames[index], receivedMessages);
                 
                 clientTransport.Client.Start(serverAddress, port);
 

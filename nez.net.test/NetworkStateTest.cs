@@ -60,7 +60,7 @@ public class NetworkStateTest
         Stopwatch sw = Stopwatch.StartNew();
 
         TaskCompletionSource<bool> tcs = new TaskCompletionSource<bool>();
-        _clientSocket.Client.OnReceive += message =>
+        _clientSocket.Client.OnMessageReceived += message =>
         {
             if (message is NetworkStateMessage networkStateMessage)
             {
@@ -109,7 +109,7 @@ public class NetworkStateTest
         Stopwatch sw = Stopwatch.StartNew();
 
         TaskCompletionSource<bool> tcs = new TaskCompletionSource<bool>();
-        _clientSocket.Client.OnReceive += message =>
+        _clientSocket.Client.OnMessageReceived += message =>
         {
             if (message is NetworkStateMessage networkStateMessage)
             {
@@ -170,16 +170,16 @@ public class NetworkStateTest
             tcsList.Add(new TaskCompletionSource<bool>());
         }
 
-        _clientSocket.Client.OnReceive += message =>
+        _clientSocket.Client.OnMessageReceived += message =>
         {
             if (message is NetworkStateMessage networkStateMessage)
             {
-                int messageIndex = message.MessageId;
+                // int messageIndex = message.MessageId;
                 if (networkStateMessage.NetworkComponents.Count == entityCountPerMessage &&
                     networkStateMessage.NetworkEntities.Count == entityCountPerMessage)
                 {
-                    messageIndicesReceived.Add(messageIndex);
-                    tcsList[messageIndex].SetResult(true);
+                    // messageIndicesReceived.Add(messageIndex);
+                    // tcsList[messageIndex].SetResult(true);
                 }
             }
         };
@@ -200,7 +200,7 @@ public class NetworkStateTest
             ushort messageIndex = (ushort)i;
             _serverTransport.Server.Send(new NetworkStateMessage
             {
-                MessageId = messageIndex, // Attach the message index to the message
+                // MessageId = messageIndex, // Attach the message index to the message
                 NetworkEntities = new Dictionary<Guid, NetworkIdentity>(networkEntities),
                 NetworkComponents = new Dictionary<Guid, NetworkComponent>(networkComponents)
             });

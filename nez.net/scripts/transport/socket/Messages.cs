@@ -22,7 +22,7 @@ public abstract class NetworkMessage
 {
     [UnionKey]
     public abstract MessageType Type { get; }
-    
+
     [Index(0)]
     public virtual ushort MessageId { get; set; }
 }
@@ -44,7 +44,7 @@ public class TransportMessage : NetworkMessage
 {
     public override MessageType Type => MessageType.TRANSPORT;
 
-    [Index(0)]
+    [Index(1)]
     public virtual TransportCode Code { get; set; }
 }
 
@@ -53,7 +53,7 @@ public class MirrorMessage : NetworkMessage
 {
     public override MessageType Type => MessageType.MIRROR;
 
-    [Index(0)]
+    [Index(1)]
     public virtual string Message { get; set; }
 }
 
@@ -75,10 +75,10 @@ public class SyncMessage : NetworkMessage
 {
     public override MessageType Type => MessageType.SYNC;
     
-    [Index(0)]
+    [Index(1)]
     public virtual Guid ComponentID { get; set; }
     
-    [Index(1)]
+    [Index(2)]
     public virtual string FieldName { get; set; }
 }
 

@@ -15,7 +15,7 @@ public abstract class SocketHandler : ISocketHandler
     
     public NetworkState NetworkState { get; set; }
     
-    public Delegate<NetworkMessage> OnReceive { get; set; }
+    public Delegate<NetworkMessage> OnMessageReceived { get; set; }
     public Delegate<TransportCode> OnTransportMessage { get; set; }
     
     private readonly Dictionary<Socket, List<byte>> _incompleteMessages = new();
@@ -27,53 +27,75 @@ public abstract class SocketHandler : ISocketHandler
         if(!IsRunning || IsClosing)
             return;
         
-        var state = (Tuple<byte[], Socket>)ar.AsyncState;
-        byte[] buffer = state.Item1;
-        Socket senderSocket = state.Item2;
+        var state = (Tuple<Socket, byte[]>)ar.AsyncState;
+        Socket senderSocket = state.Item1;
+        byte[] buffer = state.Item2;
         
         int receivedLength = senderSocket.EndReceive(ar);
+        
+        // print buffer contents to console
+        Console.WriteLine("buffer contents after EndReceive: " + BitConverter.ToString(buffer));
 
         if (receivedLength > 0)
         {
-            if (!_incompleteMessages.ContainsKey(senderSocket))
-            {
-                _incompleteMessages[senderSocket] = new List<byte>();
-            }
-
-            int chunkIndex = BitConverter.ToInt32(buffer, 0);
             int totalChunks = BitConverter.ToInt32(buffer, 4);
-            
-            // Append this chunk to the buffer
-            _incompleteMessages[senderSocket].AddRange(new ArraySegment<byte>(buffer, 8, receivedLength - 8));
 
-            if (AllChunksReceived(senderSocket, totalChunks))
+            if (totalChunks == 0)
             {
-                try
+                var actualMessage = new ArraySegment<byte>(buffer, 1, receivedLength - 1).ToArray();
+                NetworkMessage message = ZeroFormatterSerializer.Deserialize<NetworkMessage>(actualMessage);
+                HandleMessage(message);
+            }
+            else
+            {
+                int chunkIndex = BitConverter.ToInt32(buffer, 0);
+                
+                if (!_incompleteMessages.ContainsKey(senderSocket))
                 {
-                    _incompleteMessages[senderSocket].AddRange(new ArraySegment<byte>(buffer, 8, receivedLength - 8));
-                    byte[] actualMessage = _incompleteMessages[senderSocket].ToArray();
-                    NetworkMessage message = ZeroFormatterSerializer.Deserialize<NetworkMessage>(actualMessage);
-                    HandleMessage(message);
-                    _incompleteMessages[senderSocket].Clear();
+                    _incompleteMessages[senderSocket] = new List<byte>();
                 }
-                catch (Exception ex)
+                
+                // Append this chunk to the buffer
+                _incompleteMessages[senderSocket].AddRange(new ArraySegment<byte>(buffer, 8, receivedLength - 8));
+                if (AllChunksReceived(senderSocket, totalChunks, chunkIndex))
                 {
-                    Console.WriteLine("Exception: " + ex.Message);
-                    Console.WriteLine("Message is probably incomplete, waiting for more data...");
+                    try
+                    {
+                        byte[] actualMessage = _incompleteMessages[senderSocket].ToArray();
+                        // Deserialize the actual message
+                        NetworkMessage message = ZeroFormatterSerializer.Deserialize<NetworkMessage>(actualMessage);
+            
+                        // Handle the message and clear the buffer
+                        HandleMessage(message);
+                        _incompleteMessages[senderSocket].Clear();
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine("Exception: " + ex.Message);
+                        Console.WriteLine("Message is probably incomplete, waiting for more data...");
+                    }
                 }
             }
             
             // Start another receive operation
-            senderSocket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, HandleReceive, state);
+            byte[] newBuffer = new byte[MaxBufferSize];
+            senderSocket.BeginReceive(newBuffer, 0, newBuffer.Length, SocketFlags.None, HandleReceive, Tuple.Create(senderSocket, newBuffer));
         }
     }
     
+    private readonly Dictionary<Socket, HashSet<int>> _receivedChunks = new();
+    
     // Placeholder for more sophisticated chunk-tracking logic
-    private bool AllChunksReceived(Socket socket, int totalChunks)
+    private bool AllChunksReceived(Socket socket, int totalChunks, int chunkIndex)
     {
-        // For now, we simply check if the received byte count matches or exceeds
-        // the expected total byte count based on totalChunks and MaxBufferSize
-        return _incompleteMessages[socket].Count >= (totalChunks * MaxBufferSize);
+        if (!_receivedChunks.ContainsKey(socket))
+        {
+            _receivedChunks[socket] = new HashSet<int>();
+        }
+    
+        _receivedChunks[socket].Add(chunkIndex);
+
+        return _receivedChunks[socket].Count == totalChunks;
     }
     
     // create method for handling NetworkMessage
@@ -105,6 +127,7 @@ public abstract class SocketHandler : ISocketHandler
                 case MessageType.MIRROR:
                     break;
                 case MessageType.PING:
+                    Send(new PongMessage());
                     break;
                 case MessageType.PONG:
                     break;
@@ -112,7 +135,7 @@ public abstract class SocketHandler : ISocketHandler
                     throw new ArgumentOutOfRangeException();
             }
                     
-            RaiseEvent(OnReceive, message);
+            RaiseEvent(OnMessageReceived, message);
         }
     }
     
@@ -134,19 +157,26 @@ public abstract class SocketHandler : ISocketHandler
                 // Create and send chunk
                 var chunk = CreateChunkWithHeader(serializedMessage, i, chunkCount);
                 Console.WriteLine($"sending message chunk of size {chunk.Length}/{MaxBufferSize} [{message.Type}]");
-                SendChunk(connection, chunk);
+                // print to console buffer content
+                Console.WriteLine("chunk buffer contents before BeginSend [chunkIndex: "+ i +"]: " + BitConverter.ToString(chunk));
+                Send(connection, chunk);
             }
         }
         else
         {
             Console.WriteLine($"sending message of size {serializedMessage.Length}/{MaxBufferSize} [{message.Type}]");
+            // print to console buffer content
+            Console.WriteLine("no-chunk buffer contents before BeginSend: " + BitConverter.ToString(serializedMessage));
             Send(connection, serializedMessage);
         }
     }
     
     private int CalculateChunkCount(int messageSize)
     {
-        return (int)Math.Ceiling((double)messageSize / MaxBufferSize);
+        int headerSize = 8; // 4 bytes for chunkIndex and 4 bytes for totalChunks
+        int maxDataSize = MaxBufferSize - headerSize;
+
+        return (int)Math.Ceiling((double)messageSize / maxDataSize);
     }
     
     private byte[] CreateChunk(byte[] serializedMessage, int chunkIndex, int totalChunks)
@@ -162,30 +192,28 @@ public abstract class SocketHandler : ISocketHandler
     
     private byte[] CreateChunkWithHeader(byte[] serializedMessage, int chunkIndex, int totalChunks)
     {
-        int offset = chunkIndex * MaxBufferSize;
-        int length = Math.Min(MaxBufferSize, serializedMessage.Length - offset);
-    
+        int headerSize = 8; // 4 bytes for chunkIndex and 4 bytes for totalChunks
+        int maxDataSize = MaxBufferSize - headerSize;
+
+        int offset = chunkIndex * maxDataSize;
+        int length = Math.Min(maxDataSize, serializedMessage.Length - offset);
+
         // Create a chunk header: 4 bytes for chunkIndex and 4 bytes for totalChunks
-        byte[] header = new byte[8];
+        byte[] header = new byte[headerSize];
         BitConverter.GetBytes(chunkIndex).CopyTo(header, 0);
         BitConverter.GetBytes(totalChunks).CopyTo(header, 4);
-    
+
         // Create the chunk with the header
         byte[] chunk = new byte[length + header.Length];
         Array.Copy(header, 0, chunk, 0, header.Length);
         Array.Copy(serializedMessage, offset, chunk, header.Length, length);
-    
+
         return chunk;
     }
     
-    private void SendChunk(Socket connection, byte[] chunk)
+    private void Send(Socket connection, byte[] buffer)
     {
-        connection.BeginSend(chunk, 0, chunk.Length, SocketFlags.None, OnSendCallback, connection);
-    }
-    
-    private void Send(Socket connection, byte[] message)
-    {
-        connection.BeginSend(message, 0, message.Length, SocketFlags.None, OnSendCallback, connection);
+        connection.BeginSend(buffer, 0, buffer.Length, SocketFlags.None, OnSendCallback, connection);
     }
     
     public virtual void Send(NetworkMessage message)

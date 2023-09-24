@@ -40,13 +40,13 @@ namespace nez.net.test
             string serverAddress = "127.0.0.1";
 
             // Initialize
-            _serverTransport.Server.OnReceive += ServerReceive;
+            _serverTransport.Server.OnMessageReceived += ServerReceive;
             _serverTransport.Server.Start(port);
 
             // Wait for the server to start
             await Task.Delay(10);
             
-            _clientTransport.Client.OnReceive += ClientReceive;
+            _clientTransport.Client.OnMessageReceived += ClientReceive;
             _clientTransport.Client.Start(serverAddress, port);
 
             // Create a stopwatch to measure time

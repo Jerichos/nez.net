@@ -11,10 +11,9 @@ namespace nez.net.transport.socket;
 
 public class SocketServer : SocketHandler, ISocketServerHandler
 {
-    public override bool IsRunning => _serverSocket != null && _serverSocket.IsBound;
+    public override bool IsRunning => Socket != null && Socket.IsBound;
     public int MaxConnections { get; set; } = 10;
 
-    private Socket _serverSocket;
     private IPEndPoint _ipEndPoint;
     
     private readonly Dictionary<uint, Socket> _clientSockets = new();
@@ -40,11 +39,11 @@ public class SocketServer : SocketHandler, ISocketServerHandler
             return;
         }
         
-        _serverSocket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+        Socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         _ipEndPoint = new IPEndPoint(IPAddress.Any, port);
-        _serverSocket.Bind(_ipEndPoint);
-        _serverSocket.Listen(10);
-        _serverSocket.BeginAccept(OnClientConnected, null);
+        Socket.Bind(_ipEndPoint);
+        Socket.Listen(10);
+        Socket.BeginAccept(OnClientConnected, null);
         
         IsClosing = false;
     }
@@ -73,8 +72,8 @@ public class SocketServer : SocketHandler, ISocketServerHandler
         _clientSockets.Clear();
         _clientIDs.Clear();
 
-        _serverSocket.Close();
-        _serverSocket = null;
+        Socket.Close();
+        Socket = null;
     }
     
     private void OnClientConnected(IAsyncResult ar)
@@ -90,7 +89,7 @@ public class SocketServer : SocketHandler, ISocketServerHandler
         
             // End the pending accept operation without adding the new client
             // This is crucial as failing to end the operation could lead to resource leaks
-            Socket tempSocket = _serverSocket.EndAccept(ar);
+            Socket tempSocket = Socket.EndAccept(ar);
             
             // notify client that maximum connections reached
             Send(tempSocket, new TransportMessage{Code = TransportCode.MAXIMUM_CONNECTION_REACHED});
@@ -98,7 +97,7 @@ public class SocketServer : SocketHandler, ISocketServerHandler
         }
         else
         {
-            Socket clientSocket = _serverSocket.EndAccept(ar);
+            Socket clientSocket = Socket.EndAccept(ar);
             uint clientID = (uint)_clientSockets.Count + 1;
             
             _clientSockets.Add(clientID, clientSocket);
@@ -106,12 +105,11 @@ public class SocketServer : SocketHandler, ISocketServerHandler
 
             byte[] buffer = new byte[MaxBufferSize];
             clientSocket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, HandleReceive, Tuple.Create(clientSocket, buffer));
-            
             OnClientConnected(clientID);
         }
 
         // Continue accepting more clients.
-        _serverSocket.BeginAccept(OnClientConnected, null);
+        Socket.BeginAccept(OnClientConnected, null);
     }
     
     public override void Send(NetworkMessage message)
@@ -131,12 +129,12 @@ public class SocketServer : SocketHandler, ISocketServerHandler
     {
         NetworkStateMessage networkStateMessage = new NetworkStateMessage
         {
-            MessageId = 9999,
+            // MessageId = 9999,
             NetworkEntities = new Dictionary<Guid, NetworkIdentity>(NetworkState.GetNetworkEntities()),
             NetworkComponents = new Dictionary<Guid, NetworkComponent>(NetworkState.GetNetworkComponents())
         };
         
-        Send(clientId, networkStateMessage);
+        // Send(clientId, networkStateMessage);
     }
 
     public void GetNetworkState(out ConcurrentDictionary<Guid, NetworkIdentity> networkEntities, out ConcurrentDictionary<Guid, NetworkComponent> networkComponents)
