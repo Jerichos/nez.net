@@ -159,6 +159,7 @@ public class SocketServer : ISocketServerHandler
             {
                 // Create and send chunk
                 var chunk = CreateChunk(serializedMessage, i, chunkCount);
+                Console.WriteLine($"sending message of size {serializedMessage.Length}/{MaxBufferSize} [{message.Type}]");
                 SendChunk(clientSocket, chunk);
             }
         }
