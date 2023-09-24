@@ -26,7 +26,9 @@ public class SocketTransport
         Formatter<DefaultResolver, NetworkIdentity>.Register(new NetworkIdentityFormatter<DefaultResolver>());
         Formatter<DefaultResolver, NetworkComponent>.Register(new NetworkComponentFormatter<DefaultResolver>());
 
-        ZeroFormatterSerializer.Serialize(new NetworkStateMessage());
+        NetworkMessage message = new PingMessage();
+        var ping = ZeroFormatterSerializer.Serialize(message);
+        var deserialized = ZeroFormatterSerializer.Deserialize<NetworkMessage>(ping);
     }
 
     public void Stop()

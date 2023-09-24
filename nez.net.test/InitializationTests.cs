@@ -5,42 +5,54 @@ namespace nez.net.test;
 [TestFixture]
 public class InitializationTests
 {
+    private SocketTransport _serverTransport;
+    private SocketTransport _clientTransport;
+
+    // Add test initialization
+    [SetUp]
+    public void Setup()
+    {
+        _serverTransport = new SocketTransport();
+        _clientTransport = new SocketTransport();
+    }
+    
+    // Add test cleanup
+    [TearDown]
+    public void TearDown()
+    {
+        _serverTransport.Stop();
+        _clientTransport.Stop();
+    }
+    
     [Test]
     public void TestServerInitialization()
     {
-        // Arrange
-        SocketTransport socketTransport = new SocketTransport();
-
         // Act
-        socketTransport.Server.Start(5000);
+        _serverTransport.Server.Start(5000);
     
         // Assert
         // Replace the assertion below with the actual validation.
         // For example, you might want to check a boolean that confirms the server is running.
-        Assert.IsTrue(socketTransport.IsServerRunning);
+        Assert.IsTrue(_serverTransport.IsServerRunning);
         
-        socketTransport.Server.Stop();
+        _serverTransport.Server.Stop();
     }
     
     [Test]
     public void TestClientInitialization()
     {
-        // Arrange
-        SocketTransport serverTransport = new SocketTransport();
-        SocketTransport clientTransport = new SocketTransport();
-
         // Act
-        serverTransport.Server.Start(5000);
+        _serverTransport.Server.Start(5000);
         Thread.SpinWait(10);
-        clientTransport.Client.Start("127.0.0.1", 5000);
+        _clientTransport.Client.Start("127.0.0.1", 5000);
         Thread.SpinWait(10);
     
         // Assert
         // Replace the assertion below with the actual validation.
         // For example, you could check if the client has a valid socket connection.
-        Assert.IsTrue(clientTransport.IsClientRunning);
+        Assert.IsTrue(_clientTransport.IsClientRunning);
         
-        serverTransport.Server.Stop();
-        clientTransport.Client.Stop();
+        _serverTransport.Server.Stop();
+        _clientTransport.Client.Stop();
     }
 }

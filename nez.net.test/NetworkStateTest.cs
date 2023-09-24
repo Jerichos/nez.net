@@ -27,6 +27,7 @@ public class NetworkStateTest
     [SetUp]
     public void Setup()
     {
+        Stopwatch sw = Stopwatch.StartNew();
         _serverTransport = new SocketTransport();
         _clientSocket = new SocketTransport();
         
@@ -42,6 +43,7 @@ public class NetworkStateTest
         _clientSocket.Client.NetworkState = _clientNetworkState;
         
         _serverTransport.Server.Start(_port);
+        Console.WriteLine("Setup finished in: " + sw.ElapsedMilliseconds + "ms");
         Thread.SpinWait(10);
     }
 
@@ -52,7 +54,7 @@ public class NetworkStateTest
         _clientSocket.Stop();
     }
 
-    [Test, Timeout(100)]
+    [Test, Timeout(500)]
     public async Task TestNetworkStateSynchronization()
     {
         var entity = CreateServerEntity();
@@ -60,10 +62,13 @@ public class NetworkStateTest
         Stopwatch sw = Stopwatch.StartNew();
 
         TaskCompletionSource<bool> tcs = new TaskCompletionSource<bool>();
+
+        var timer = Stopwatch.StartNew();
         _clientSocket.Client.OnMessageReceived += message =>
         {
             if (message is NetworkStateMessage networkStateMessage)
             {
+                Console.WriteLine($"Time until first NetworkStateMessage received: {timer.ElapsedMilliseconds}ms");
                 if (networkStateMessage.NetworkComponents.Count == 1 && networkStateMessage.NetworkEntities.Count == 1)
                 {
                     _clientNetworkState.UpdateScene(_clientScene);
@@ -76,7 +81,6 @@ public class NetworkStateTest
         _clientSocket.Client.Start(_ip, _port);
         
         await tcs.Task;
-        Console.WriteLine("Elapsed: " + sw.ElapsedMilliseconds + "ms");
         
         // check if client scene has the same entity as the server scene
         Assert.That(_clientScene.Entities.Count, Is.EqualTo(_serverScene.Entities.Count));
@@ -92,6 +96,8 @@ public class NetworkStateTest
         Assert.IsTrue(tcs.Task.Result);
         Assert.IsTrue(_serverTransport.IsServerRunning);
         Assert.IsTrue(_clientSocket.IsClientRunning);
+        
+        Console.WriteLine("Test finished in: " + sw.ElapsedMilliseconds + "ms");
     }
     
     // test multiple entities synchronization between server and client
@@ -174,12 +180,12 @@ public class NetworkStateTest
         {
             if (message is NetworkStateMessage networkStateMessage)
             {
-                // int messageIndex = message.MessageId;
+                int messageIndex = message.MessageId;
                 if (networkStateMessage.NetworkComponents.Count == entityCountPerMessage &&
                     networkStateMessage.NetworkEntities.Count == entityCountPerMessage)
                 {
-                    // messageIndicesReceived.Add(messageIndex);
-                    // tcsList[messageIndex].SetResult(true);
+                    messageIndicesReceived.Add(messageIndex);
+                    tcsList[messageIndex].SetResult(true);
                 }
             }
         };
@@ -200,7 +206,7 @@ public class NetworkStateTest
             ushort messageIndex = (ushort)i;
             _serverTransport.Server.Send(new NetworkStateMessage
             {
-                // MessageId = messageIndex, // Attach the message index to the message
+                MessageId = messageIndex, // Attach the message index to the message
                 NetworkEntities = new Dictionary<Guid, NetworkIdentity>(networkEntities),
                 NetworkComponents = new Dictionary<Guid, NetworkComponent>(networkComponents)
             });

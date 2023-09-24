@@ -134,7 +134,7 @@ public class SocketServer : SocketHandler, ISocketServerHandler
             NetworkComponents = new Dictionary<Guid, NetworkComponent>(NetworkState.GetNetworkComponents())
         };
         
-        // Send(clientId, networkStateMessage);
+        Send(clientId, networkStateMessage);
     }
 
     public void GetNetworkState(out ConcurrentDictionary<Guid, NetworkIdentity> networkEntities, out ConcurrentDictionary<Guid, NetworkComponent> networkComponents)

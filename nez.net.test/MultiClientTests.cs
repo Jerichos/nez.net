@@ -13,7 +13,7 @@ namespace nez.net.test
         private List<SocketTransport> _clientTransports;
         private List<TaskCompletionSource<bool>> _clientTaskCompletionSources;
         
-        Dictionary<string, string> receivedMessages = new Dictionary<string, string>();
+        Dictionary<string, string> receivedMessages = new();
         
         [SetUp]
         public void Setup()
@@ -54,7 +54,6 @@ namespace nez.net.test
 
                 TaskCompletionSource<bool> tcs = new TaskCompletionSource<bool>();
                 _clientTaskCompletionSources.Add(tcs);
-                
 
                 int index = i;
                 

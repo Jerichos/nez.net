@@ -79,7 +79,6 @@ namespace nez.net.test
         {
             if (message is PingMessage)
             {
-                _serverTransport.Server.Send(_pongMessage);
                 _serverTaskCompletionSource.SetResult(true);
             }
         }
