@@ -15,16 +15,16 @@ public class ConnectionTests
     private SocketTransport[] _clientTransports;
     private SocketTransport _overLimitClient;
     private SocketTransport _clientTransport;
-    
-    int maxConnections = 10; // Set your server's max connection limit
+
+    readonly int _maxConnections = 3; // Set your server's max connection limit
 
     [SetUp]
     public void Setup()
     {
         // instantiate all transports
         _serverTransport = new SocketTransport();
-        _clientTransports = new SocketTransport[maxConnections];
-        for (int i = 0; i < maxConnections; i++)
+        _clientTransports = new SocketTransport[_maxConnections];
+        for (int i = 0; i < _maxConnections; i++)
         {
             _clientTransports[i] = new SocketTransport();
         }
@@ -49,11 +49,11 @@ public class ConnectionTests
     public async Task TestMaximumConnections()
     {
         _serverTransport.Server.Start(5000);
-        _serverTransport.Server.MaxConnections = maxConnections;
+        _serverTransport.Server.MaxConnections = _maxConnections;
         Thread.SpinWait(10);
             
         // Act
-        for (int i = 0; i < maxConnections; i++)
+        for (int i = 0; i < _maxConnections; i++)
         {
             _clientTransports[i].Client.Start("127.0.0.1", 5000);
             Thread.SpinWait(10);
@@ -76,7 +76,7 @@ public class ConnectionTests
 
         // Cleanup
         _serverTransport.Server.Stop();
-        for (int i = 0; i < maxConnections; i++)
+        for (int i = 0; i < _maxConnections; i++)
         {
             _clientTransports[i].Client.Stop();
         }

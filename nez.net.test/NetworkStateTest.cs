@@ -52,7 +52,7 @@ public class NetworkStateTest
         _clientSocket.Stop();
     }
 
-    [Test, Timeout(1000)]
+    [Test, Timeout(100)]
     public async Task TestNetworkStateSynchronization()
     {
         var entity = CreateServerEntity();
@@ -96,7 +96,7 @@ public class NetworkStateTest
     
     // test multiple entities synchronization between server and client
     [Test, Timeout(1000)]
-    public async Task TestMultipleEntitiesSynchronization()
+    public async Task TestMessageChunking()
     {
         // create n entities to server scene
         int entityCount = 6;

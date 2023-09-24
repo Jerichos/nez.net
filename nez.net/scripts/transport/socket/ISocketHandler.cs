@@ -6,6 +6,8 @@ public interface ISocketHandler
     
     void Stop();
 
+    int MaxBufferSize { get; set; }
+
     event Delegate<NetworkMessage> OnReceive;
     event Delegate<TransportCode> OnTransportMessage;
 }

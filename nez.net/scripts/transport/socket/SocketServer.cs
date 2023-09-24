@@ -22,13 +22,11 @@ public class SocketServer : ISocketServerHandler
     private readonly Dictionary<Socket, uint> _clientIDs = new();
     private bool _isClosing;
     
-    private readonly int _sendBufferSize;
-    private readonly int _receiveBufferSize;
+    public int MaxBufferSize { get; set; }
 
-    public SocketServer(int receiveBufferSize, int sendBufferSize)
+    public SocketServer(int bufferSize)
     {
-        _receiveBufferSize = receiveBufferSize;
-        _sendBufferSize = sendBufferSize;
+        MaxBufferSize = bufferSize;
 
         NetworkState = new NetworkState();
     }
@@ -37,7 +35,8 @@ public class SocketServer : ISocketServerHandler
     {
         StopServer();
     }
-    
+
+
     public NetworkState NetworkState { get; set; }
     
     // Initialize the server socket and start listening
@@ -103,9 +102,7 @@ public class SocketServer : ISocketServerHandler
             Socket tempSocket = _serverSocket.EndAccept(ar);
             // Send a message to the client that the server is full
             
-            byte[] msg = ZeroFormatterSerializer.Serialize(new TransportMessage { Code = TransportCode.MAXIMUM_CONNECTION_REACHED });
-            tempSocket.Send(msg);
-            
+            Send(tempSocket, new TransportMessage{Code = TransportCode.MAXIMUM_CONNECTION_REACHED});
             tempSocket.Close();
         }
         else
@@ -116,7 +113,7 @@ public class SocketServer : ISocketServerHandler
             _clientSockets.Add(clientID, clientSocket);
             _clientIDs.Add(clientSocket, clientID);
 
-            byte[] buffer = new byte[_receiveBufferSize];
+            byte[] buffer = new byte[MaxBufferSize];
             clientSocket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, ServerReceiveCallback, Tuple.Create(clientSocket, buffer));
             
             OnClientConnected(clientID);
@@ -154,15 +151,48 @@ public class SocketServer : ISocketServerHandler
     {
         byte[] serializedMessage = ZeroFormatterSerializer.Serialize(message);
         
-        if(serializedMessage.Length > _sendBufferSize)
+        if(serializedMessage.Length > MaxBufferSize)
         {
-            // Handle message size exceeding buffer size.
-            // You can either break it into smaller messages, or resize the buffer.
-            Debug.Warn($"Message size {serializedMessage.Length} exceeds buffer size {_sendBufferSize}. Consider resizing the buffer or breaking the message into smaller parts.");
-            return;
+            // Chunk the message
+            int chunkCount = CalculateChunkCount(serializedMessage.Length);
+            for(int i = 0; i < chunkCount; i++)
+            {
+                // Create and send chunk
+                var chunk = CreateChunk(serializedMessage, i, chunkCount);
+                SendChunk(clientSocket, chunk);
+            }
         }
-        
-        clientSocket.BeginSend(serializedMessage, 0, serializedMessage.Length, SocketFlags.None, SendCallback, clientSocket);
+        else
+        {
+            Console.WriteLine($"sending message of size {serializedMessage.Length}/{MaxBufferSize} [{message.Type}]");
+            Send(clientSocket, serializedMessage);
+        }
+    }
+    
+    private int CalculateChunkCount(int messageSize)
+    {
+        return (int)Math.Ceiling((double)messageSize / MaxBufferSize);
+    }
+    
+    private byte[] CreateChunk(byte[] serializedMessage, int chunkIndex, int totalChunks)
+    {
+        int offset = chunkIndex * MaxBufferSize;
+        int length = Math.Min(MaxBufferSize, serializedMessage.Length - offset);
+    
+        byte[] chunk = new byte[length];
+        Array.Copy(serializedMessage, offset, chunk, 0, length);
+    
+        return chunk;
+    }
+    
+    private void SendChunk(Socket clientSocket, byte[] chunk)
+    {
+        clientSocket.BeginSend(chunk, 0, chunk.Length, SocketFlags.None, SendCallback, clientSocket);
+    }
+
+    private void Send(Socket targetSocket, byte[] message)
+    {
+        targetSocket.BeginSend(message, 0, message.Length, SocketFlags.None, SendCallback, targetSocket);
     }
     
     private void SendCallback(IAsyncResult ar)

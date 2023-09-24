@@ -1,12 +1,11 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using nez.net.components;
 using ZeroFormatter;
 
 namespace nez.net.transport.socket;
 
-public enum MessageType : byte
+public enum MessageType
 {
     NETWORK_STATE,
     TRANSPORT,
@@ -23,31 +22,6 @@ public abstract class NetworkMessage
 {
     [UnionKey]
     public abstract MessageType Type { get; }
-    
-    private static int CalculateBufferSize<T>() where T: NetworkMessage
-    {
-        var instance = Activator.CreateInstance<T>();
-        return ZeroFormatterSerializer.Serialize(instance).Length;
-    }
-    
-    [IgnoreFormat]
-    static Dictionary<Type, int> preCalculatedBufferSizes = new Dictionary<Type, int>();
-
-    public static void PreCalculateBufferSizes()
-    {
-        preCalculatedBufferSizes[typeof(TransportMessage)] = CalculateBufferSize<TransportMessage>();
-        preCalculatedBufferSizes[typeof(MirrorMessage)] = CalculateBufferSize<MirrorMessage>();
-        preCalculatedBufferSizes[typeof(PingMessage)] = CalculateBufferSize<PingMessage>();
-        preCalculatedBufferSizes[typeof(PongMessage)] = CalculateBufferSize<PongMessage>();
-        preCalculatedBufferSizes[typeof(NetworkStateMessage)] = CalculateBufferSize<NetworkStateMessage>();
-        preCalculatedBufferSizes[typeof(SyncMessage)] = CalculateBufferSize<SyncMessage>();
-        // ... more types
-    }
-
-    public static int GetPreCalculatedBufferSize<T>() where T : NetworkMessage
-    {
-        return preCalculatedBufferSizes[typeof(T)];
-    }
 }
 
 [ZeroFormattable]
@@ -103,13 +77,5 @@ public class NetworkStateMessage : NetworkMessage
 
     [Index(1)]
     public virtual Dictionary<Guid, NetworkComponent> NetworkComponents { get; set; }
-}
-
-// uri message
-[ZeroFormattable]
-public class UriMessage
-{
-    [Index(0)]
-    public virtual Uri Uri { get; set; }
 }
 

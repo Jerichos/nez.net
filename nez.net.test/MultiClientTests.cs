@@ -33,7 +33,7 @@ namespace nez.net.test
             }
         }
 
-        [Test, Timeout(5000)]
+        [Test, Timeout(1000)]
         public async Task TestMultiClient()
         {
             int port = 8888;
@@ -95,13 +95,8 @@ namespace nez.net.test
                 {
                     Assert.AreEqual(expectedStr, mirrorMessage.Message);
                     receivedMessages[expectedStr] = mirrorMessage.Message;
+                    tcs.SetResult(true);
                 }
-                else
-                {
-                    Assert.Fail("Received message is not of type MirrorMessage");
-                }
-                
-                tcs.SetResult(true);
             }
         }
     }

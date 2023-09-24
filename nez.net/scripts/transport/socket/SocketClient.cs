@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Net.Sockets;
 using Nez;
 using ZeroFormatter;
@@ -14,15 +15,14 @@ public class SocketClient : ISocketClientHandler
     
     private Socket _clientSocket;
     private bool _isClosing;
-    private readonly int _sendBufferSize;
-    private readonly int _receiveBufferSize;
+    
+    public int MaxBufferSize { get; set; }
 
     public NetworkState NetworkState { get; set; }
     
-    public SocketClient(int receiveBufferSize, int sendBufferSize)
+    public SocketClient(int maxBufferSize)
     {
-        _receiveBufferSize = receiveBufferSize;
-        _sendBufferSize = sendBufferSize;
+        MaxBufferSize = maxBufferSize;
         NetworkState = new NetworkState();
     }
     
@@ -35,7 +35,9 @@ public class SocketClient : ISocketClientHandler
     {
         StopClient();
     }
-    
+
+   
+
     // Initialize the client socket and connect to the server
     private void ConnectClient(string ipAddress, int port)
     {
@@ -62,8 +64,9 @@ public class SocketClient : ISocketClientHandler
             if (result.IsCompleted)
             {
                 _clientSocket.EndConnect(result);
-                byte[] buffer = new byte[_receiveBufferSize];
+                byte[] buffer = new byte[MaxBufferSize];
                 _clientSocket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, ClientReceiveCallback, Tuple.Create(buffer, _clientSocket));
+                _isClosing = false;
                 OnTransportMessage?.Invoke(TransportCode.CLIENT_CONNECTED);
             }
             else
@@ -91,8 +94,6 @@ public class SocketClient : ISocketClientHandler
             Debug.Warn($"Stack Trace: {e.StackTrace}");
             OnTransportMessage?.Invoke(TransportCode.CLIENT_ERROR);
         }
-
-        _isClosing = false;
     }
         
     public void Send(NetworkMessage message)
@@ -106,6 +107,8 @@ public class SocketClient : ISocketClientHandler
         Socket socket = (Socket)ar.AsyncState;
         socket.EndSend(ar);
     }
+    
+    private readonly Dictionary<Socket, List<byte>> _incompleteMessages = new();
 
     private void ClientReceiveCallback(IAsyncResult ar)
     {
@@ -114,56 +117,67 @@ public class SocketClient : ISocketClientHandler
         
         var state = (Tuple<byte[], Socket>)ar.AsyncState;
         byte[] buffer = state.Item1;
-        Socket clientSocket = state.Item2;
+        Socket senderSocket = state.Item2;
 
-        int receivedLength = clientSocket.EndReceive(ar);
+        int receivedLength = senderSocket.EndReceive(ar);
 
         if (receivedLength > 0)
         {
-            byte[] actualReceived = new byte[receivedLength];
-            Array.Copy(buffer, actualReceived, receivedLength);
-            
-            NetworkMessage message = ZeroFormatterSerializer.Deserialize<NetworkMessage>(actualReceived);
-            
-            if (message != null)
+            if (!_incompleteMessages.ContainsKey(senderSocket))
             {
-                switch (message.Type)
-                {
-                    case MessageType.NETWORK_STATE:
-                        var gameStateMessage = (NetworkStateMessage)message;
-                        
-                        // Process game state message
-                        NetworkState.SetNetworkState(gameStateMessage.NetworkEntities, gameStateMessage.NetworkComponents);
-                        break;
-                    case MessageType.TRANSPORT:
-                        var transportMessage = (TransportMessage)message;
-                        RaiseEvent(OnTransportMessage, transportMessage.Code);
-                        switch (transportMessage.Code)
-                        {
-                            case TransportCode.MAXIMUM_CONNECTION_REACHED:
-                                StopClient();
-                                return;
-                            default:
-                                Debug.Warn("transport message not handled: " + transportMessage.Code);
-                                break;
-                        }
-                        break;
-                    case MessageType.MIRROR:
-                        break;
-                    case MessageType.PING:
-                        break;
-                    case MessageType.PONG:
-                        break;
-                    default:
-                        throw new ArgumentOutOfRangeException();
-                }
-                
-                RaiseEvent(OnReceive, message);
+                _incompleteMessages[senderSocket] = new List<byte>();
             }
+            
+            _incompleteMessages[senderSocket].AddRange(new ArraySegment<byte>(buffer, 0, receivedLength));
 
-            // You can add additional logic to process the message here if needed
+            try
+            {
+                NetworkMessage message = ZeroFormatterSerializer.Deserialize<NetworkMessage>(_incompleteMessages[senderSocket].ToArray());
+                if (message != null)
+                {
+                    switch (message.Type)
+                    {
+                        case MessageType.NETWORK_STATE:
+                            var gameStateMessage = (NetworkStateMessage)message;
+                            
+                            // Process game state message
+                            NetworkState.SetNetworkState(gameStateMessage.NetworkEntities, gameStateMessage.NetworkComponents);
+                            break;
+                        case MessageType.TRANSPORT:
+                            var transportMessage = (TransportMessage)message;
+                            RaiseEvent(OnTransportMessage, TransportCode.MAXIMUM_CONNECTION_REACHED);
+                            switch (transportMessage.Code)
+                            {
+                                case TransportCode.MAXIMUM_CONNECTION_REACHED:
+                                    StopClient();
+                                    return;
+                                default:
+                                    Debug.Warn("transport message not handled: " + transportMessage.Code);
+                                    break;
+                            }
+                            break;
+                        case MessageType.MIRROR:
+                            break;
+                        case MessageType.PING:
+                            break;
+                        case MessageType.PONG:
+                            break;
+                        default:
+                            throw new ArgumentOutOfRangeException();
+                    }
+                    
+                    _incompleteMessages[senderSocket].Clear();
+                    RaiseEvent(OnReceive, message);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Exception: " + ex.Message);
+                Console.WriteLine("Message is probably incomplete, waiting for more data...");
+            }
+            
             // Start another receive operation
-            clientSocket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, ClientReceiveCallback, state);
+            senderSocket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, ClientReceiveCallback, state);
         }
     }
 

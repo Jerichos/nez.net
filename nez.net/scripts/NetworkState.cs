@@ -69,80 +69,91 @@ public class NetworkState
 
     public void SetNetworkState(ConcurrentDictionary<Guid, NetworkIdentity> networkEntities, ConcurrentDictionary<Guid, NetworkComponent> networkComponents)
     {
-        // Create or update entities based on received state
-        foreach (var networkEntityPair in networkEntities)
+        if (networkEntities != null)
         {
-            NetworkIdentity receivedNetworkIdentity = networkEntityPair.Value;
+            // Create or update entities based on received state
+            foreach (var networkEntityPair in networkEntities)
+            {
+                NetworkIdentity receivedNetworkIdentity = networkEntityPair.Value;
+                
+                if (_networkEntities.TryGetValue(networkEntityPair.Key, out NetworkIdentity existingNetworkIdentity))
+                {
+                    // Update existing entity
+                    // Example: existingNetworkIdentity.Position = receivedNetworkIdentity.Position;
+                }
+                else
+                {
+                    // Create new entity
+                    // Example: CreateEntity(receivedNetworkIdentity);
+                    Entity entity = new Entity();
+                    entity.AddComponent(receivedNetworkIdentity);
+                    
+                    // TODO: add entity to a scene
+                    
+                    _networkEntities.TryAdd(networkEntityPair.Key, receivedNetworkIdentity);
+                }
+            }
             
-            if (_networkEntities.TryGetValue(networkEntityPair.Key, out NetworkIdentity existingNetworkIdentity))
+            // Remove stale entities that are not part of the new network state
+            foreach (var existingEntityPair in _networkEntities)
             {
-                // Update existing entity
-                // Example: existingNetworkIdentity.Position = receivedNetworkIdentity.Position;
-            }
-            else
-            {
-                // Create new entity
-                // Example: CreateEntity(receivedNetworkIdentity);
-                Entity entity = new Entity();
-                entity.AddComponent(receivedNetworkIdentity);
-                
-                // TODO: add entity to a scene
-                
-                _networkEntities.TryAdd(networkEntityPair.Key, receivedNetworkIdentity);
-            }
-        }
-        
-        // Remove stale entities that are not part of the new network state
-        foreach (var existingEntityPair in _networkEntities)
-        {
-            if (!networkEntities.ContainsKey(existingEntityPair.Key))
-            {
-                // Remove entity from game
-                // Example: RemoveEntity(existingEntityPair.Value);
-                _networkEntities.TryRemove(existingEntityPair.Key, out _);
+                if (!networkEntities.ContainsKey(existingEntityPair.Key))
+                {
+                    // Remove entity from game
+                    // Example: RemoveEntity(existingEntityPair.Value);
+                    _networkEntities.TryRemove(existingEntityPair.Key, out _);
+                }
             }
         }
 
-        // Update components based on received state
-        foreach (var networkComponentPair in networkComponents)
+        if (networkComponents != null)
         {
-            NetworkComponent receivedNetworkComponent = networkComponentPair.Value;
+            // Update components based on received state
+            foreach (var networkComponentPair in networkComponents)
+            {
+                NetworkComponent receivedNetworkComponent = networkComponentPair.Value;
 
-            if (_networkComponents.TryGetValue(networkComponentPair.Key, out NetworkComponent existingNetworkComponent))
-            {
-                // Update existing component
-                // Example: existingNetworkComponent.SomeAttribute = receivedNetworkComponent.SomeAttribute;
+                if (_networkComponents.TryGetValue(networkComponentPair.Key, out NetworkComponent existingNetworkComponent))
+                {
+                    // Update existing component
+                    // Example: existingNetworkComponent.SomeAttribute = receivedNetworkComponent.SomeAttribute;
+                }
+                else
+                {
+                    // Create new component
+                    // Example: CreateComponent(receivedNetworkComponent);
+                    
+                    // get matching network indentity
+                    NetworkIdentity networkIdentity = GetNetworkEntity(receivedNetworkComponent.IdentityID);
+                    networkIdentity.Entity.AddComponent(receivedNetworkComponent);
+                    
+                    _networkComponents.TryAdd(networkComponentPair.Key, receivedNetworkComponent);
+                }
             }
-            else
+            
+            // Remove stale components that are not part of the new network state
+            foreach (var existingComponentPair in _networkComponents)
             {
-                // Create new component
-                // Example: CreateComponent(receivedNetworkComponent);
-                
-                // get matching network indentity
-                NetworkIdentity networkIdentity = GetNetworkEntity(receivedNetworkComponent.IdentityID);
-                networkIdentity.Entity.AddComponent(receivedNetworkComponent);
-                
-                _networkComponents.TryAdd(networkComponentPair.Key, receivedNetworkComponent);
-            }
-        }
-        
-        // Remove stale components that are not part of the new network state
-        foreach (var existingComponentPair in _networkComponents)
-        {
-            if (!networkComponents.ContainsKey(existingComponentPair.Key))
-            {
-                // Remove component
-                // Example: RemoveComponent(existingComponentPair.Value);
-                _networkComponents.TryRemove(existingComponentPair.Key, out _);
+                if (!networkComponents.ContainsKey(existingComponentPair.Key))
+                {
+                    // Remove component
+                    // Example: RemoveComponent(existingComponentPair.Value);
+                    _networkComponents.TryRemove(existingComponentPair.Key, out _);
+                }
             }
         }
     }
 
     public void SetNetworkState(Dictionary<Guid, NetworkIdentity> networkEntities, Dictionary<Guid, NetworkComponent> networkComponents)
     {
-        ConcurrentDictionary<Guid, NetworkIdentity> concurrentNetworkEntities = new ConcurrentDictionary<Guid, NetworkIdentity>(networkEntities);
-        ConcurrentDictionary<Guid, NetworkComponent> concurrentNetworkComponents = new ConcurrentDictionary<Guid, NetworkComponent>(networkComponents);
-
+        ConcurrentDictionary<Guid, NetworkIdentity> concurrentNetworkEntities = null;
+        ConcurrentDictionary<Guid, NetworkComponent> concurrentNetworkComponents = null;
+            
+            if(networkEntities != null)
+                concurrentNetworkEntities = new ConcurrentDictionary<Guid, NetworkIdentity>(networkEntities);
+            if(networkComponents != null)
+                concurrentNetworkComponents = new ConcurrentDictionary<Guid, NetworkComponent>(networkComponents);
+            
         SetNetworkState(concurrentNetworkEntities, concurrentNetworkComponents);
     }
 
