@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using nez.net.components;
 using ZeroFormatter;
 using ZeroFormatter.Formatters;
@@ -18,18 +16,20 @@ public class SocketTransport
 
     public int MaxBufferSize { get; set; } = 512; // 2kb, default was 1024
     
+    private readonly NetworkState _networkState = new();
+ 
     public SocketTransport()
     {
-        Server = new SocketServer(MaxBufferSize);
-        Client = new SocketClient(MaxBufferSize);
+        Server = new SocketServer(MaxBufferSize, _networkState);
+        Client = new SocketClient(MaxBufferSize, _networkState);
         
-        // NetworkMessage.PreCalculateBufferSizes();
-        
-        //Formatter<DefaultResolver, Dictionary<Guid, NetworkIdentity>>.Register(new NetworkStateFormatter<DefaultResolver>());
         Formatter<DefaultResolver, NetworkIdentity>.Register(new NetworkIdentityFormatter<DefaultResolver>());
         Formatter<DefaultResolver, NetworkComponent>.Register(new NetworkComponentFormatter<DefaultResolver>());
-
-        // ZeroFormatterSerializer.Serialize(new TransportMessage{Code = (byte)TransportCode.CLIENT_ERROR});
+        var bla =ZeroFormatterSerializer.Serialize(new TransportMessage
+        {
+            MessageId = 1,
+            Code = TransportCode.SERVER_STARTED
+        });
     }
 
     public void Stop()

@@ -10,7 +10,7 @@ namespace nez.net.test;
 [TestFixture]
 public class NetworkStateTest
 {
-    private SocketTransport _serverSocket;
+    private SocketTransport _serverTransport;
     private SocketTransport _clientSocket;
     
     private NetworkState _serverNetworkState;
@@ -27,7 +27,7 @@ public class NetworkStateTest
     [SetUp]
     public void Setup()
     {
-        _serverSocket = new SocketTransport();
+        _serverTransport = new SocketTransport();
         _clientSocket = new SocketTransport();
         
         _serverNetworkState = new NetworkState();
@@ -38,17 +38,17 @@ public class NetworkStateTest
         _serverScene = new Scene();
         _clientScene = new Scene();
         
-        _serverSocket.Server.NetworkState = _serverNetworkState;
+        _serverTransport.Server.NetworkState = _serverNetworkState;
         _clientSocket.Client.NetworkState = _clientNetworkState;
         
-        _serverSocket.Server.Start(_port);
+        _serverTransport.Server.Start(_port);
         Thread.SpinWait(10);
     }
 
     [TearDown]
     public void TearDown()
     {
-        _serverSocket.Stop();
+        _serverTransport.Stop();
         _clientSocket.Stop();
     }
 
@@ -90,7 +90,7 @@ public class NetworkStateTest
         Assert.That(targetNetworkComponent.ComponentID, Is.EqualTo(entity.GetComponent<TestNetworkComponent>().ComponentID));
         
         Assert.IsTrue(tcs.Task.Result);
-        Assert.IsTrue(_serverSocket.IsServerRunning);
+        Assert.IsTrue(_serverTransport.IsServerRunning);
         Assert.IsTrue(_clientSocket.IsClientRunning);
     }
     
@@ -98,7 +98,7 @@ public class NetworkStateTest
     [Test, Timeout(1000)]
     public async Task TestMessageChunking()
     {
-        // create n entities to server scene
+        // create n entities to server scene, it should exceed the max buffer size 512 bytes
         int entityCount = 6;
         List<Entity> serverEntities = new List<Entity>();
         for (int i = 0; i < entityCount; i++)
@@ -155,13 +155,73 @@ public class NetworkStateTest
             }
         }
     }
+    
+    [Test, Timeout(1000)]
+    public async Task TestConcurrentMessageChunking()
+    {
+        int entityCountPerMessage = 6;
+        int totalMessages = 3; // Number of concurrent messages
+
+        List<TaskCompletionSource<bool>> tcsList = new List<TaskCompletionSource<bool>>(totalMessages);
+        List<int> messageIndicesReceived = new List<int>();
+
+        for (int i = 0; i < totalMessages; i++)
+        {
+            tcsList.Add(new TaskCompletionSource<bool>());
+        }
+
+        _clientSocket.Client.OnReceive += message =>
+        {
+            if (message is NetworkStateMessage networkStateMessage)
+            {
+                int messageIndex = message.MessageId;
+                if (networkStateMessage.NetworkComponents.Count == entityCountPerMessage &&
+                    networkStateMessage.NetworkEntities.Count == entityCountPerMessage)
+                {
+                    messageIndicesReceived.Add(messageIndex);
+                    tcsList[messageIndex].SetResult(true);
+                }
+            }
+        };
+
+        _clientSocket.Client.Start(_ip, _port);
+
+        // Sending multiple messages from the server
+        for (int i = 0; i < totalMessages; i++)
+        {
+            List<Entity> serverEntities = new List<Entity>();
+            for (int j = 0; j < entityCountPerMessage; j++)
+            {
+                serverEntities.Add(CreateServerEntity());
+            }
+            // Attach the message index to the entities or message to identify them in the client.
+            // Send the state to the client
+            _serverTransport.Server.GetNetworkState(out var networkEntities, out var networkComponents);
+            ushort messageIndex = (ushort)i;
+            _serverTransport.Server.Send(new NetworkStateMessage
+            {
+                MessageId = messageIndex, // Attach the message index to the message
+                NetworkEntities = new Dictionary<Guid, NetworkIdentity>(networkEntities),
+                NetworkComponents = new Dictionary<Guid, NetworkComponent>(networkComponents)
+            });
+        }
+
+        // Wait for all messages to be received and processed by the client
+        await Task.WhenAll(tcsList.Select(tcs => tcs.Task));
+
+        // Assert the number of messages received
+        Assert.That(messageIndicesReceived.Count, Is.EqualTo(totalMessages));
+
+        // Perform additional validation, similar to your existing tests
+    }
+
 
     // helper method to test entity to server scene, with network components
     private Entity CreateServerEntity()
     {
         Entity entity = _serverScene.CreateEntity("TestEntity");
-        entity.AddComponentUnique(new NetworkIdentity(_serverSocket.Server));
-        entity.AddNetworkComponent(new TestNetworkComponent(_serverSocket.Server));
+        entity.AddComponentUnique(new NetworkIdentity(_serverTransport.Server));
+        entity.AddNetworkComponent(new TestNetworkComponent(_serverTransport.Server));
         _serverScene.Entities.UpdateLists();
 
         for (int i = 0; i < _serverScene.Entities.Count; i++)

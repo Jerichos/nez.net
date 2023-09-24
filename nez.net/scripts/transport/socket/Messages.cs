@@ -22,6 +22,21 @@ public abstract class NetworkMessage
 {
     [UnionKey]
     public abstract MessageType Type { get; }
+    
+    [Index(0)]
+    public virtual ushort MessageId { get; set; }
+}
+
+[ZeroFormattable]
+public class NetworkStateMessage : NetworkMessage
+{
+    public override MessageType Type => MessageType.NETWORK_STATE;
+    
+    [Index(1)]
+    public virtual Dictionary<Guid, NetworkIdentity> NetworkEntities { get; set; }
+
+    [Index(2)]
+    public virtual Dictionary<Guid, NetworkComponent> NetworkComponents { get; set; }
 }
 
 [ZeroFormattable]
@@ -67,15 +82,4 @@ public class SyncMessage : NetworkMessage
     public virtual string FieldName { get; set; }
 }
 
-[ZeroFormattable]
-public class NetworkStateMessage : NetworkMessage
-{
-    public override MessageType Type => MessageType.NETWORK_STATE;
-    
-    [Index(0)]
-    public virtual Dictionary<Guid, NetworkIdentity> NetworkEntities { get; set; }
-
-    [Index(1)]
-    public virtual Dictionary<Guid, NetworkComponent> NetworkComponents { get; set; }
-}
 

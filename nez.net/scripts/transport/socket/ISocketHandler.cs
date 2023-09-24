@@ -1,4 +1,8 @@
-﻿namespace nez.net.transport.socket
+﻿using System;
+using System.Collections.Concurrent;
+using nez.net.components;
+
+namespace nez.net.transport.socket
 {
 public interface ISocketHandler
 {
@@ -8,8 +12,8 @@ public interface ISocketHandler
 
     int MaxBufferSize { get; set; }
 
-    event Delegate<NetworkMessage> OnReceive;
-    event Delegate<TransportCode> OnTransportMessage;
+    Delegate<NetworkMessage> OnReceive { get; set; }
+    Delegate<TransportCode> OnTransportMessage { get; set; }
 }
 
 public interface ISocketServerHandler : ISocketHandler
@@ -23,8 +27,8 @@ public interface ISocketServerHandler : ISocketHandler
     void Send(NetworkMessage message);
     // send to specific client
     void Send(uint clientId, NetworkMessage message);
-    
     void OnClientConnected(uint clientId);
+    void GetNetworkState(out ConcurrentDictionary<Guid, NetworkIdentity> networkEntities, out ConcurrentDictionary<Guid, NetworkComponent> networkComponents);
 }
 
 public interface ISocketClientHandler : ISocketHandler
