@@ -1,4 +1,5 @@
 ﻿using System.Diagnostics;
+using Microsoft.Xna.Framework;
 using Nez;
 using nez.net.components;
 using nez.net.extensions;
@@ -11,7 +12,7 @@ namespace nez.net.test;
 public class NetworkStateTest
 {
     private SocketTransport _serverTransport;
-    private SocketTransport _clientSocket;
+    private SocketTransport _clientTransport;
     
     private NetworkState _serverNetworkState;
     private NetworkState _clientNetworkState;
@@ -19,28 +20,28 @@ public class NetworkStateTest
     private Scene _serverScene;
     private Scene _clientScene;
     
-    private Core _serverCore;
-
     private readonly string _ip = "127.0.0.1";
     private readonly int _port = 7777;
+
+    private Core _core;
 
     [SetUp]
     public void Setup()
     {
         Stopwatch sw = Stopwatch.StartNew();
         _serverTransport = new SocketTransport();
-        _clientSocket = new SocketTransport();
+        _clientTransport = new SocketTransport();
         
         _serverNetworkState = new NetworkState();
         _clientNetworkState = new NetworkState();
 
-        _serverCore = new Core();
-
+        _core = new Core();
+        
         _serverScene = new Scene();
         _clientScene = new Scene();
         
         _serverTransport.Server.NetworkState = _serverNetworkState;
-        _clientSocket.Client.NetworkState = _clientNetworkState;
+        _clientTransport.Client.NetworkState = _clientNetworkState;
         
         _serverTransport.Server.Start(_port);
         Console.WriteLine("Setup finished in: " + sw.ElapsedMilliseconds + "ms");
@@ -51,7 +52,8 @@ public class NetworkStateTest
     public void TearDown()
     {
         _serverTransport.Stop();
-        _clientSocket.Stop();
+        _clientTransport.Stop();
+        ((Game)_core).Exit();
     }
 
     [Test, Timeout(500)]
@@ -64,7 +66,7 @@ public class NetworkStateTest
         TaskCompletionSource<bool> tcs = new TaskCompletionSource<bool>();
 
         var timer = Stopwatch.StartNew();
-        _clientSocket.Client.OnMessageReceived += message =>
+        _clientTransport.Client.OnMessageReceived += message =>
         {
             if (message is NetworkStateMessage networkStateMessage)
             {
@@ -78,7 +80,7 @@ public class NetworkStateTest
             }
         };
         
-        _clientSocket.Client.Start(_ip, _port);
+        _clientTransport.Client.Start(_ip, _port);
         
         await tcs.Task;
         
@@ -95,7 +97,7 @@ public class NetworkStateTest
         
         Assert.IsTrue(tcs.Task.Result);
         Assert.IsTrue(_serverTransport.IsServerRunning);
-        Assert.IsTrue(_clientSocket.IsClientRunning);
+        Assert.IsTrue(_clientTransport.IsClientRunning);
         
         Console.WriteLine("Test finished in: " + sw.ElapsedMilliseconds + "ms");
     }
@@ -115,7 +117,7 @@ public class NetworkStateTest
         Stopwatch sw = Stopwatch.StartNew();
 
         TaskCompletionSource<bool> tcs = new TaskCompletionSource<bool>();
-        _clientSocket.Client.OnMessageReceived += message =>
+        _clientTransport.Client.OnMessageReceived += message =>
         {
             if (message is NetworkStateMessage networkStateMessage)
             {
@@ -128,7 +130,7 @@ public class NetworkStateTest
             }
         };
 
-        _clientSocket.Client.Start(_ip, _port);
+        _clientTransport.Client.Start(_ip, _port);
         
         await tcs.Task;
         Console.WriteLine("Elapsed: " + sw.ElapsedMilliseconds + "ms");
@@ -175,11 +177,13 @@ public class NetworkStateTest
         {
             tcsList.Add(new TaskCompletionSource<bool>());
         }
-
-        _clientSocket.Client.OnMessageReceived += message =>
+        Stopwatch sw = Stopwatch.StartNew();
+        _clientTransport.Client.OnMessageReceived += message =>
         {
             if (message is NetworkStateMessage networkStateMessage)
             {
+                Console.WriteLine("TEST: NetworkStateMessage received in " + sw.ElapsedMilliseconds + "ms");
+                sw.Restart();
                 int messageIndex = message.MessageId;
                 if (networkStateMessage.NetworkComponents.Count == entityCountPerMessage &&
                     networkStateMessage.NetworkEntities.Count == entityCountPerMessage)
@@ -190,20 +194,24 @@ public class NetworkStateTest
             }
         };
 
-        _clientSocket.Client.Start(_ip, _port);
+        _clientTransport.Client.Start(_ip, _port);
+        sw.Restart();
 
         // Sending multiple messages from the server
+        List<Entity> serverEntities = new List<Entity>();
+        for (int j = 0; j < entityCountPerMessage; j++)
+        {
+            serverEntities.Add(CreateServerEntity());
+        }
+        
         for (int i = 0; i < totalMessages; i++)
         {
-            List<Entity> serverEntities = new List<Entity>();
-            for (int j = 0; j < entityCountPerMessage; j++)
-            {
-                serverEntities.Add(CreateServerEntity());
-            }
             // Attach the message index to the entities or message to identify them in the client.
             // Send the state to the client
             _serverTransport.Server.GetNetworkState(out var networkEntities, out var networkComponents);
             ushort messageIndex = (ushort)i;
+            
+            // send message to all clients
             _serverTransport.Server.Send(new NetworkStateMessage
             {
                 MessageId = messageIndex, // Attach the message index to the message

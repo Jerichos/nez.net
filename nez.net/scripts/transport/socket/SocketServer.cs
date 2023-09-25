@@ -16,8 +16,8 @@ public class SocketServer : SocketHandler, ISocketServerHandler
 
     private IPEndPoint _ipEndPoint;
     
-    private readonly Dictionary<uint, Socket> _clientSockets = new();
-    private readonly Dictionary<Socket, uint> _clientIDs = new();
+    private readonly Dictionary<ushort, Socket> _clientSockets = new();
+    private readonly Dictionary<Socket, ushort> _clientIDs = new();
     
     public SocketServer(int bufferSize, NetworkState networkState)
     {
@@ -69,6 +69,8 @@ public class SocketServer : SocketHandler, ISocketServerHandler
             clientSocket.Value.Close();
         }
         
+        Console.WriteLine("stopping server");
+        
         _clientSockets.Clear();
         _clientIDs.Clear();
 
@@ -98,35 +100,54 @@ public class SocketServer : SocketHandler, ISocketServerHandler
         else
         {
             Socket clientSocket = Socket.EndAccept(ar);
-            uint clientID = (uint)_clientSockets.Count + 1;
-            
-            _clientSockets.Add(clientID, clientSocket);
-            _clientIDs.Add(clientSocket, clientID);
+            int clientID = (ushort)_clientSockets.Count + 1;
+
+            if (clientID > ushort.MaxValue)
+                throw new Exception("Maximum number of clients reached. Cannot accept more clients.");
+
+            _clientSockets.Add((ushort)clientID, clientSocket);
+            _clientIDs.Add(clientSocket, (ushort)clientID);
 
             byte[] buffer = new byte[MaxBufferSize];
             clientSocket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, HandleReceive, Tuple.Create(clientSocket, buffer));
-            OnClientConnected(clientID);
+            OnClientConnected((ushort)clientID);
+            
         }
 
         // Continue accepting more clients.
         Socket.BeginAccept(OnClientConnected, null);
     }
-    
+
+    protected override ushort GetConnectionID(Socket connection)
+    {
+        Console.WriteLine($"getting connection id. Current connection IDs: {_clientIDs.Count}");
+        
+        // throw exception if there is no connection
+        if (!_clientIDs.ContainsKey(connection))
+            throw new Exception("Connection not found.");
+        
+        return _clientIDs[connection];
+    }
+
     public override void Send(NetworkMessage message)
     {
+        Console.WriteLine($"sending message to all clients message: {message.Type}");
         foreach (var clientSocket in _clientSockets)
         {
             Send(clientSocket.Value, message);
         }
     }
 
-    public void Send(uint clientID, NetworkMessage message)
+    public void Send(ushort clientID, NetworkMessage message)
     {
+        Console.WriteLine($"sending message to client {clientID} message: {message.Type}");
         Send(_clientSockets[clientID], message);
     }
 
-    public void OnClientConnected(uint clientId)
+    public void OnClientConnected(ushort clientId)
     {
+        Console.WriteLine($"client connected: {clientId}. Sending network state.");
+        
         NetworkStateMessage networkStateMessage = new NetworkStateMessage
         {
             // MessageId = 9999,

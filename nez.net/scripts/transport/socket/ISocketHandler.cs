@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Net.Sockets;
 using nez.net.components;
 
 namespace nez.net.transport.socket
@@ -14,6 +15,9 @@ public interface ISocketHandler
 
     Delegate<NetworkMessage> OnMessageReceived { get; set; }
     Delegate<TransportCode> OnTransportMessage { get; set; }
+    
+    Socket Socket { get; set; }
+    void Send(Socket connection, NetworkMessage message);
 }
 
 public interface ISocketServerHandler : ISocketHandler
@@ -26,8 +30,8 @@ public interface ISocketServerHandler : ISocketHandler
     // send to all clients
     void Send(NetworkMessage message);
     // send to specific client
-    void Send(uint clientId, NetworkMessage message);
-    void OnClientConnected(uint clientId);
+    void Send(ushort clientId, NetworkMessage message);
+    void OnClientConnected(ushort clientId);
     void GetNetworkState(out ConcurrentDictionary<Guid, NetworkIdentity> networkEntities, out ConcurrentDictionary<Guid, NetworkComponent> networkComponents);
 }
 

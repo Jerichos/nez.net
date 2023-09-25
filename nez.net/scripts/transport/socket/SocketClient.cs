@@ -73,4 +73,9 @@ public class SocketClient : SocketHandler, ISocketClientHandler
             RaiseEvent(OnTransportMessage, TransportCode.CLIENT_ERROR);
         }
     }
+
+    protected override ushort GetConnectionID(Socket connection)
+    {
+        return 0;
+    }
 }
