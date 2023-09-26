@@ -1,11 +1,11 @@
+using System;
+using System.Net.Sockets;
 using nez.net.components;
 using ZeroFormatter;
 using ZeroFormatter.Formatters;
 
 namespace nez.net.transport.socket
 {
-
-
 public class SocketTransport
 {
     public ISocketServerHandler Server { get; }
@@ -25,10 +25,61 @@ public class SocketTransport
         
         Formatter<DefaultResolver, NetworkIdentity>.Register(new NetworkIdentityFormatter<DefaultResolver>());
         Formatter<DefaultResolver, NetworkComponent>.Register(new NetworkComponentFormatter<DefaultResolver>());
+        
+        Server.OnMessageReceived += OnServerReceive;
+        Client.OnMessageReceived += OnClientReceive;
+    }
 
-        NetworkMessage message = new PingMessage();
-        var ping = ZeroFormatterSerializer.Serialize(message);
-        var deserialized = ZeroFormatterSerializer.Deserialize<NetworkMessage>(ping);
+    private void OnServerReceive(Socket connection, NetworkMessage message)
+    {
+        switch (message.Type)
+        {
+            case MessageType.NETWORK_STATE:
+                break;
+            case MessageType.TRANSPORT:
+                break;
+            case MessageType.MIRROR:
+                break;
+            case MessageType.PING:
+                Server.Send(connection, new PongMessage());
+                break;
+            case MessageType.PONG:
+                break;
+            case MessageType.URI:
+                break;
+            case MessageType.SYNC:
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
+    }
+    
+    private void OnClientReceive(Socket connection, NetworkMessage message)
+    {
+        if (message == null)
+            return;
+        
+        switch (message.Type)
+        {
+            case MessageType.NETWORK_STATE:
+                var networkStateMessage = message as NetworkStateMessage;
+                _networkState.SetNetworkState(networkStateMessage.NetworkEntities, networkStateMessage.NetworkComponents);
+                break;
+            case MessageType.TRANSPORT:
+                break;
+            case MessageType.MIRROR:
+                break;
+            case MessageType.PING:
+                break;
+            case MessageType.PONG:
+                break;
+            case MessageType.URI:
+                break;
+            case MessageType.SYNC:
+                break;
+            default:
+                throw new ArgumentOutOfRangeException();
+        }
     }
 
     public void Stop()

@@ -21,11 +21,9 @@ public class RingBuffer
     
     public void Write(byte[] data)
     {
-        foreach (var byteData in data)
-        {
-            _buffer[_end] = byteData;
-            _end = (_end + 1) % _capacity;
-        }
+        // Using Buffer.BlockCopy for better performance
+        Buffer.BlockCopy(data, 0, _buffer, _end, data.Length);
+        _end = (_end + data.Length) % _capacity;
     }
     
     private int CalculateFreeSpace()
@@ -77,12 +75,24 @@ public class RingBuffer
 
     public byte[] Read(int length)
     {
-        byte[] result = new byte[length];
-        for (int i = 0; i < length; i++)
+        int availableData = AvailableData();
+        if (availableData < length)
         {
-            result[i] = _buffer[_start];
-            _start = (_start + 1) % _capacity;
+            // Return null or special value instead of throwing exception
+            return null;
         }
+
+        byte[] result = new byte[length];
+
+        // Inline calculations and copy bytes before and after the wrap-around
+        Buffer.BlockCopy(_buffer, _start, result, 0, Math.Min(length, _capacity - _start));
+        if (length > _capacity - _start)
+        {
+            Buffer.BlockCopy(_buffer, 0, result, _capacity - _start, length - (_capacity - _start));
+        }
+
+        _start = (_start + length) % _capacity;
+
         return result;
     }
     
@@ -184,6 +194,11 @@ public class RingBuffer
         }
     }
     
+    private void RollbackReadPointer(int bytes)
+    {
+        _start = (_start - bytes + _capacity) % _capacity;
+    }
+    
     public (bool success, ushort payloadLength, bool isChunked, ushort messageID) ReadPacketHeader()
     {
         // Check if there's enough data to read the packet header (5 bytes)
@@ -192,41 +207,53 @@ public class RingBuffer
             return (false, 0, false, 0);
         }
 
-        // Read the packet header
-        byte[] lengthBytes = Read(2);
-        byte[] flagBytes = Read(1);
-        byte[] messageIDBytes = Read(2);
-
-        ushort payloadLength = BitConverter.ToUInt16(lengthBytes, 0);
-        byte flags = flagBytes[0];
-        bool isChunked = (flags & 1) != 0;  // Check the first bit
-        ushort messageID = BitConverter.ToUInt16(messageIDBytes, 0);
-
-        // Check if there's enough data to read the payload
-        if (AvailableData() < payloadLength)
+        try
         {
-            // Rollback the read pointer to before the packet header, so we can try again later
-            _start = (_start - 5 + _capacity) % _capacity;
-            return (false, 0, false, 0);
+            // Read the packet header
+            byte[] lengthBytes = Read(2);
+            byte[] flagBytes = Read(1);
+            byte[] messageIDBytes = Read(2);
+
+            ushort payloadLength = BitConverter.ToUInt16(lengthBytes, 0);
+            byte flags = flagBytes[0];
+            bool isChunked = (flags & 1) != 0;  // Check the first bit
+            ushort messageID = BitConverter.ToUInt16(messageIDBytes, 0);
+
+            // Check if there's enough data to read the payload
+            if (AvailableData() < payloadLength)
+            {
+                // Rollback the read pointer to before the packet header, so we can try again later
+                _start = (_start - 5 + _capacity) % _capacity;
+                return (false, 0, false, 0);
+            }
+
+            // Read the payload
+            // byte[] payload = Read(payloadLength);
+
+            return (true, payloadLength, isChunked, messageID);
         }
-
-        // Read the payload
-        // byte[] payload = Read(payloadLength);
-
-        return (true, payloadLength, isChunked, messageID);
+        catch (Exception e)
+        {
+            RollbackReadPointer(5);
+            throw new InvalidOperationException("Failed to read packet header", e);
+        }
     }
 
     public byte[] ReadSendPacket()
+{
+    // Check if there's enough data to read the packet header (5 bytes)
+    if (AvailableData() < 5)
     {
-        // Check if there's enough data to read the packet header (5 bytes)
-        if (AvailableData() < 5)
-        {
-            return null;
-        }
+        return null;
+    }
 
+    try
+    {
         // Read the entire 5-byte packet header in one go
         byte[] headerBytes = Read(5);
         ushort payloadLength = BitConverter.ToUInt16(headerBytes, 0);
+
+        Console.WriteLine($"Payload Length: {payloadLength}, Available Data: {AvailableData()}");
 
         // Read chunked flag
         bool isChunked = (headerBytes[2] & 1) != 0;  // Check the first bit
@@ -238,8 +265,7 @@ public class RingBuffer
             // Check if there's enough data to read the chunk header (2 bytes)
             if (AvailableData() < 2)
             {
-                // Rollback the read pointer to before the packet header, so we can try again later
-                _start = (_start - 5 + _capacity) % _capacity;
+                RollbackReadPointer(5);
                 return null;
             }
 
@@ -248,11 +274,17 @@ public class RingBuffer
         }
 
         // Check if there's enough data to read the payload
-        if (AvailableData() < payloadLength)
+        var availableData = AvailableData();
+        if (availableData < payloadLength)
         {
-            // Rollback the read pointer to before the packet header, so we can try again later
-            _start = (_start - 5 + _capacity) % _capacity;
+            RollbackReadPointer(5);
             return null;
+        }
+
+        // Boundary check
+        if (payloadLength > _buffer.Length)
+        {
+            throw new InvalidOperationException("Payload length exceeds buffer size");
         }
 
         // Read the payload
@@ -272,18 +304,16 @@ public class RingBuffer
 
         return packet;
     }
+    catch (Exception e)
+    {
+        RollbackReadPointer(5);
+        throw new InvalidOperationException("Failed to read send packet", e);
+    }
+}
 
-    // Helper method to calculate the number of bytes available to read
     public int AvailableData()
     {
-        if (_end >= _start)
-        {
-            return _end - _start;
-        }
-        else
-        {
-            return _capacity - _start + _end;
-        }
+        return _end >= _start ? _end - _start : _capacity - _start + _end;
     }
 
     public (byte chunkIndex, byte totalChunks, byte[] payload) ReadChunkHeader(ushort payloadLength)

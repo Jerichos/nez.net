@@ -84,13 +84,15 @@ public abstract class SocketHandler : ISocketHandler
                 {
                     var (chunkIndex, chunkCount, payload) = _ringBufferReceiver.ReadChunkHeader(payloadLength);
                     NetworkMessage message = _messageHandler.HandleReceivedData(payload, messageID, true, chunkIndex, chunkCount);
-                    RaiseEvent(OnMessageReceived, connection, message);
+                    if(message != null)
+                        RaiseEvent(OnMessageReceived, connection, message);
                 }
                 else
                 {
                     var payload = _ringBufferReceiver.Read(payloadLength);
                     NetworkMessage message = _messageHandler.HandleReceivedData(payload, messageID, false, 0, 0);
-                    RaiseEvent(OnMessageReceived, connection, message);
+                    if(message != null)
+                        RaiseEvent(OnMessageReceived, connection, message);
                 }
             }
             
@@ -103,9 +105,6 @@ public abstract class SocketHandler : ISocketHandler
         }
     }
 
-    // TODO: check if it helps trim the end for ZeroFormatter deserialization to be faster
-    
-    
     public void Send(Socket connection, NetworkMessage message)
     {
         byte[] payload = ZeroFormatterSerializer.Serialize(message);
@@ -132,7 +131,8 @@ public abstract class SocketHandler : ISocketHandler
 
     private void SendPacketFromRingBuffer(Socket connection)
     {
-        Send(connection, _ringBufferSender.ReadSendPacket());
+        var sendData = _ringBufferSender.ReadSendPacket();
+        Send(connection, sendData);
     }
 
     public double GetSendBitRate()
