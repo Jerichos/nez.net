@@ -70,7 +70,7 @@ public class NetworkStateTest
         TaskCompletionSource<bool> tcs = new TaskCompletionSource<bool>();
 
         var timer = Stopwatch.StartNew();
-        _clientTransport.Client.OnMessageReceived += message =>
+        _clientTransport.Client.OnMessageReceived += (connection, message) =>
         {
             if (message is NetworkStateMessage networkStateMessage)
             {
@@ -121,7 +121,7 @@ public class NetworkStateTest
         Stopwatch sw = Stopwatch.StartNew();
 
         TaskCompletionSource<bool> tcs = new TaskCompletionSource<bool>();
-        _clientTransport.Client.OnMessageReceived += message =>
+        _clientTransport.Client.OnMessageReceived += (connection, message) =>
         {
             if (message is NetworkStateMessage networkStateMessage)
             {
@@ -192,7 +192,7 @@ public class NetworkStateTest
         Stopwatch sw = Stopwatch.StartNew();
 
         int messageID = 0;
-        _clientTransport.Client.OnMessageReceived += message =>
+        _clientTransport.Client.OnMessageReceived += (connection, message) =>
         {
             if (message is NetworkStateMessage networkStateMessage)
             {

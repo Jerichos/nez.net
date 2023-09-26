@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net.Sockets;
 using System.Text;
 using System.Threading.Tasks;
 using NUnit.Framework;
@@ -78,7 +79,7 @@ namespace nez.net.test
             _totalTimer.Stop();
         }
         
-        private void ServerReceive(NetworkMessage message)
+        private void ServerReceive(Socket connection, NetworkMessage message)
         {
             if (message is PingMessage)
             {
@@ -86,7 +87,7 @@ namespace nez.net.test
             }
         }
 
-        private void ClientReceive(NetworkMessage message)
+        private void ClientReceive(Socket connection, NetworkMessage message)
         {
             if(message is PongMessage)
                 _clientTaskCompletionSource.SetResult(true);

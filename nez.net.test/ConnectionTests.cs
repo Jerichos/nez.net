@@ -60,11 +60,16 @@ public class ConnectionTests
         }
             
         _clientConnectCallbackCompleted = new TaskCompletionSource<bool>();
-        
-        _overLimitClient.Client.OnTransportMessage += code =>
+
+        _overLimitClient.Client.OnMessageReceived += (socket, message) =>
         {
-            if (code == TransportCode.MAXIMUM_CONNECTION_REACHED)
-                _clientConnectCallbackCompleted.SetResult(false);
+            if (message is TransportMessage transportMessage)
+            {
+                if (transportMessage.Code == TransportCode.MAXIMUM_CONNECTION_REACHED)
+                {
+                    _clientConnectCallbackCompleted.SetResult(false);
+                }
+            }
         };
         
         _overLimitClient.Client.Start("127.0.0.1", 5000);
@@ -89,12 +94,15 @@ public class ConnectionTests
         // Act
         _clientConnectCallbackCompleted = new TaskCompletionSource<bool>();
 
-        _clientTransport.Client.OnTransportMessage += code =>
+        _clientTransport.Client.OnMessageReceived += (connection, message) =>
         {
-            if (code != TransportCode.CLIENT_CONNECTED)
-                _clientConnectCallbackCompleted.SetResult(false);
-            else
-                _clientConnectCallbackCompleted.SetResult(true);
+            if(message is TransportMessage transportMessage)
+            {
+                if (transportMessage.Code != TransportCode.CLIENT_CONNECTED)
+                {
+                    _clientConnectCallbackCompleted.SetResult(true);
+                }
+            }
         };
         
         _clientTransport.Client.Start("127.0.0.1", 1234);

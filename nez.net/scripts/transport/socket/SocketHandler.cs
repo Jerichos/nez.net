@@ -6,6 +6,9 @@ using ZeroFormatter;
 
 namespace nez.net.transport.socket;
 
+public delegate void Delegate<in T>(params T[] args);
+public delegate void Delegate<in T1, in T2>(T1 arg1, T2 arg2);
+
 public abstract class SocketHandler : ISocketHandler
 {
     public virtual bool IsRunning => Socket != null && Socket.Connected;
@@ -15,13 +18,11 @@ public abstract class SocketHandler : ISocketHandler
     
     public NetworkState NetworkState { get; set; }
     
-    public Delegate<NetworkMessage> OnMessageReceived { get; set; }
+    public Delegate<Socket, NetworkMessage> OnMessageReceived { get; set; }
     public Delegate<TransportCode> OnTransportMessage { get; set; }
     
     public Socket Socket { get; set; }
 
-    private readonly Dictionary<int, List<byte>> _incompleteMessages = new();
-    
     // performance
     public long TotalBitsSent { get; private set; } = 0;
     public long TotalBitsReceived { get; private set; } = 0;
@@ -41,9 +42,13 @@ public abstract class SocketHandler : ISocketHandler
     private readonly RingBuffer _ringBufferSender;
     
     private int _messageCounter = 0;
+
+    private MessageHandler _messageHandler;
     
     protected SocketHandler(int maxBufferSize, NetworkState networkState)
     {
+        _messageHandler = new MessageHandler();
+        
         _ringBufferReceiver = new RingBuffer(2048);
         _ringBufferSender = new RingBuffer(2048);
         
@@ -71,51 +76,21 @@ public abstract class SocketHandler : ISocketHandler
         if (receivedLength > 0)
         {
             _ringBufferReceiver.WriteBlock(new ArraySegment<byte>(buffer, 0, receivedLength).ToArray());
-
             var (success, payloadLength, isChunked, messageID) = _ringBufferReceiver.ReadPacketHeader();
-            
-            if (!isChunked)
+
+            if (success)
             {
-                var actualMessage = _ringBufferReceiver.Read(payloadLength);
-                NetworkMessage message = ZeroFormatterSerializer.Deserialize<NetworkMessage>(actualMessage);
-                HandleMessage(connection, message);
-            }
-            else
-            {
-                // read chunk header
-                var (chunkIndex, totalChunks, payload) = _ringBufferReceiver.ReadChunkHeader(payloadLength);
-                
-                Console.WriteLine($"received chunk message [{chunkIndex+1}/{totalChunks}] of size {receivedLength}/{MaxBufferSize} [{messageID}]");
-                
-                if (!_incompleteMessages.ContainsKey(messageID))
+                if (isChunked)
                 {
-                    _incompleteMessages[messageID] = new List<byte>();
+                    var (chunkIndex, chunkCount, payload) = _ringBufferReceiver.ReadChunkHeader(payloadLength);
+                    NetworkMessage message = _messageHandler.HandleReceivedData(payload, messageID, true, chunkIndex, chunkCount);
+                    RaiseEvent(OnMessageReceived, connection, message);
                 }
-                
-                // Append this chunk to the buffer
-                _incompleteMessages[messageID].AddRange(new ArraySegment<byte>(payload, 0, payload.Length));
-                if (AllChunksReceived(messageID, totalChunks, chunkIndex))
+                else
                 {
-                    try
-                    {
-                        byte[] actualMessage = _incompleteMessages[messageID].ToArray();
-                        actualMessage = TrimEnd(actualMessage);
-                        Console.WriteLine($"received all chunks, message size: {actualMessage.Length} [{messageID}]");
-                        // Deserialize the actual message
-                        NetworkMessage message = ZeroFormatterSerializer.Deserialize<NetworkMessage>(actualMessage);
-            
-                        // Handle the message and clear the buffer
-                        HandleMessage(connection, message);
-                        _incompleteMessages[messageID].Clear();
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine("Exception: " + ex.Message);
-                        
-                        // discard current message
-                        _incompleteMessages[messageID].Clear();
-                        Console.WriteLine($"message was discarded: {messageID}");
-                    }
+                    var payload = _ringBufferReceiver.Read(payloadLength);
+                    NetworkMessage message = _messageHandler.HandleReceivedData(payload, messageID, false, 0, 0);
+                    RaiseEvent(OnMessageReceived, connection, message);
                 }
             }
             
@@ -127,19 +102,9 @@ public abstract class SocketHandler : ISocketHandler
             connection.BeginReceive(newBuffer, 0, newBuffer.Length, SocketFlags.None, HandleReceive, Tuple.Create(connection, newBuffer));
         }
     }
-    
+
     // TODO: check if it helps trim the end for ZeroFormatter deserialization to be faster
-    private static byte[] TrimEnd(byte[] array)
-    {
-        int lastIndex = Array.FindLastIndex(array, b => b != 0);
-
-        if (lastIndex == -1)
-            return Array.Empty<byte>();
-
-        byte[] trimmedArray = new byte[lastIndex + 1];
-        Array.Copy(array, trimmedArray, lastIndex + 1);
-        return trimmedArray;
-    }
+    
     
     public void Send(Socket connection, NetworkMessage message)
     {
@@ -170,30 +135,6 @@ public abstract class SocketHandler : ISocketHandler
         Send(connection, _ringBufferSender.ReadSendPacket());
     }
 
-    private byte[] CreateMessageChunk(int headerLength, ushort chunkIndex, ushort chunkCount, byte[] payload, int maxBufferSize)
-    {
-        throw new NotImplementedException();
-    }
-
-    private readonly Dictionary<ushort, HashSet<int>> _receivedChunks = new();
-    
-    // Placeholder for more sophisticated chunk-tracking logic
-    private bool AllChunksReceived(ushort messageID, int totalChunks, int chunkIndex)
-    {
-        if (!_receivedChunks.ContainsKey(messageID))
-        {
-            _receivedChunks[messageID] = new HashSet<int>();
-        }
-    
-        _receivedChunks[messageID].Add(chunkIndex);
-        
-        bool allChunksReceived = _receivedChunks[messageID].Count == totalChunks;
-        if(allChunksReceived)
-            Console.WriteLine("all chunks received");
-
-        return allChunksReceived;
-    }
-    
     public double GetSendBitRate()
     {
         UpdateBitRate();
@@ -218,48 +159,6 @@ public abstract class SocketHandler : ISocketHandler
         _lastTotalBitsSent = TotalBitsSent;
         _lastTotalBitsReceived = TotalBitsReceived;
         _lastUpdateTime = now;
-    }
-    
-    // create method for handling NetworkMessage
-    private void HandleMessage(Socket connection, NetworkMessage message)
-    {
-        if (message != null)
-        {
-            switch (message.Type)
-            {
-                case MessageType.NETWORK_STATE:
-                    var gameStateMessage = (NetworkStateMessage)message;
-                    // Process game state message
-                    Console.WriteLine($"Set network state of SocketHandler {GetType().FullName}");
-                    NetworkState.SetNetworkState(gameStateMessage.NetworkEntities, gameStateMessage.NetworkComponents);
-                    break;
-                case MessageType.TRANSPORT:
-                    var transportMessage = (TransportMessage)message;
-                    RaiseEvent(OnTransportMessage, TransportCode.MAXIMUM_CONNECTION_REACHED);
-                    switch (transportMessage.Code)
-                    {
-                        case TransportCode.MAXIMUM_CONNECTION_REACHED:
-                            Stop();
-                            return;
-                        default:
-                            Debug.Warn("transport message not handled: " + transportMessage.Code);
-                            break;
-                    }
-                    break;
-                case MessageType.MIRROR:
-                    Send(connection, message);
-                    break;
-                case MessageType.PING:
-                    Send(new PongMessage());
-                    break;
-                case MessageType.PONG:
-                    break;
-                default:
-                    throw new ArgumentOutOfRangeException();
-            }
-                    
-            RaiseEvent(OnMessageReceived, message);
-        }
     }
     
     private byte CalculateChunkCount(int messageSize)
@@ -317,10 +216,6 @@ public abstract class SocketHandler : ISocketHandler
     
         IsClosing = true;
     
-        // Clear state
-        _incompleteMessages.Clear();
-        _receivedChunks.Clear();
-        
         try
         {
             // Shutdown the socket before closing it
@@ -343,5 +238,11 @@ public abstract class SocketHandler : ISocketHandler
     {
         Delegate<T> handler = eventToRaise;
         handler?.Invoke(arg);
+    }
+    
+    protected void RaiseEvent<T1, T2>(Delegate<T1, T2> eventToRaise, T1 arg1, T2 arg2)
+    {
+        Delegate<T1, T2> handler = eventToRaise;
+        handler?.Invoke(arg1, arg2);
     }
 }

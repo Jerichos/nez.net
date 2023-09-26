@@ -13,7 +13,7 @@ public interface ISocketHandler
 
     int MaxBufferSize { get; set; }
 
-    Delegate<NetworkMessage> OnMessageReceived { get; set; }
+    Delegate<Socket, NetworkMessage> OnMessageReceived { get; set; }
     Delegate<TransportCode> OnTransportMessage { get; set; }
     
     // performance

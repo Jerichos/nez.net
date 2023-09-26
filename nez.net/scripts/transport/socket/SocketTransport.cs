@@ -4,7 +4,7 @@ using ZeroFormatter.Formatters;
 
 namespace nez.net.transport.socket
 {
-public delegate void Delegate<in T>(T arg);
+
 
 public class SocketTransport
 {

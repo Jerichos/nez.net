@@ -4,25 +4,12 @@ namespace nez.net.transport;
 
 public class RingBuffer
 {
-    private byte[] _buffer;
+    private readonly byte[] _buffer;
+    private readonly int _capacity;
     private int _start;
     private int _end;
-    private int _capacity;
-    
-    private int FreeSpace
-    {
-        get
-        {
-            if (_end >= _start)
-            {
-                return _capacity - (_end - _start);
-            }
-            else
-            {
-                return _start - _end - 1;
-            }
-        }
-    }
+
+    private int FreeSpace => CalculateFreeSpace();
 
     public RingBuffer(int capacity)
     {
@@ -41,34 +28,51 @@ public class RingBuffer
         }
     }
     
+    private int CalculateFreeSpace()
+    {
+        return _end >= _start ? _capacity - (_end - _start) : _start - _end - 1;
+    }
+    
     public void WriteBlock(byte[] data)
     {
-        int dataLength = data.Length;
-
-        // Check if the data wraps around the end of the buffer
-        if (_end + dataLength > _capacity)
+        if (HasEnoughSpace(data.Length))
         {
-            // Calculate the size of the two slices
-            int slice1Size = _capacity - _end;
-            int slice2Size = dataLength - slice1Size;
+            int dataLength = data.Length;
 
-            // Copy the first slice
-            Buffer.BlockCopy(data, 0, _buffer, _end, slice1Size);
+            // Check if the data wraps around the end of the buffer
+            if (_end + dataLength > _capacity)
+            {
+                // Calculate the size of the two slices
+                int slice1Size = _capacity - _end;
+                int slice2Size = dataLength - slice1Size;
 
-            // Copy the second slice
-            Buffer.BlockCopy(data, slice1Size, _buffer, 0, slice2Size);
+                // Copy the first slice
+                Buffer.BlockCopy(data, 0, _buffer, _end, slice1Size);
 
-            // Update the _end index
-            _end = slice2Size;
+                // Copy the second slice
+                Buffer.BlockCopy(data, slice1Size, _buffer, 0, slice2Size);
+
+                // Update the _end index
+                _end = slice2Size;
+            }
+            else
+            {
+                // Copy the data in one go
+                Buffer.BlockCopy(data, 0, _buffer, _end, dataLength);
+
+                // Update the _end index
+                _end = (_end + dataLength) % _capacity;
+            }
         }
         else
         {
-            // Copy the data in one go
-            Buffer.BlockCopy(data, 0, _buffer, _end, dataLength);
-
-            // Update the _end index
-            _end = (_end + dataLength) % _capacity;
+            throw new InvalidOperationException("Not enough space in the RingBuffer");
         }
+    }
+    
+    private bool HasEnoughSpace(int length)
+    {
+        return FreeSpace >= length;
     }
 
     public byte[] Read(int length)
