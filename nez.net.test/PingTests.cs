@@ -36,6 +36,7 @@ namespace nez.net.test
         [Test, Timeout(1000)]
         public async Task TestPingPong()
         {
+            int pingCount = 50;
             int port = 8888;
             string serverAddress = "127.0.0.1";
 
@@ -60,14 +61,16 @@ namespace nez.net.test
             // Start timer
             _totalTimer.Start();
 
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < pingCount; i++)
             {
                 _serverTaskCompletionSource = new TaskCompletionSource<bool>();
                 _clientTaskCompletionSource = new TaskCompletionSource<bool>();
                 
                 _pingTimer.Restart();
                 _clientTransport.Client.Send(_pingMessage);
-                await Task.WhenAll(_serverTaskCompletionSource.Task, _clientTaskCompletionSource.Task);
+                
+                await _serverTaskCompletionSource.Task;
+                await _clientTaskCompletionSource.Task;
                 Console.WriteLine($"ping {i} time: {_pingTimer.ElapsedMilliseconds} ms");
             }
 

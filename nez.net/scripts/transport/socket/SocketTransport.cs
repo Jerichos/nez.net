@@ -14,7 +14,7 @@ public class SocketTransport
     public bool IsServerRunning => Server.IsRunning;
     public bool IsClientRunning => Client.IsRunning;
 
-    public int MaxBufferSize { get; set; } = 512; // 2kb, default was 1024
+    public int MaxBufferSize { get; private set; } = 256; // 2kb, default was 1024
     
     private readonly NetworkState _networkState = new();
  
@@ -35,6 +35,13 @@ public class SocketTransport
     {
         Server?.Stop();
         Client?.Stop();
+    }
+    
+    public void SetBufferSize(int size)
+    {
+        MaxBufferSize = size;
+        Server.MaxBufferSize = size;
+        Client.MaxBufferSize = size;
     }
 }
 }

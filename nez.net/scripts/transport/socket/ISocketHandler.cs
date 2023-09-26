@@ -16,6 +16,13 @@ public interface ISocketHandler
     Delegate<NetworkMessage> OnMessageReceived { get; set; }
     Delegate<TransportCode> OnTransportMessage { get; set; }
     
+    // performance
+    public long TotalBitsSent { get; }
+    public long TotalBitsReceived { get;}
+
+    public double SendBitRate { get; }          // TODO: this is not updated
+    public double ReceiveBitRate { get; }
+    
     Socket Socket { get; set; }
     void Send(Socket connection, NetworkMessage message);
 }

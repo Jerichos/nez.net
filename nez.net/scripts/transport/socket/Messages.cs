@@ -16,15 +16,12 @@ public enum MessageType
     SYNC,
 }
 
-[Union(typeof(TransportMessage), typeof(MirrorMessage), typeof(PingMessage), typeof(PongMessage), 
+[Union(typeof(TransportMessage), typeof(PingMessage), typeof(PongMessage), 
     typeof(NetworkStateMessage), typeof(SyncMessage))]
 public abstract class NetworkMessage
 {
     [UnionKey]
     public abstract MessageType Type { get; }
-
-    [Index(0)]
-    public virtual ushort MessageId { get; set; }
 }
 
 [ZeroFormattable]
@@ -32,10 +29,10 @@ public class NetworkStateMessage : NetworkMessage
 {
     public override MessageType Type => MessageType.NETWORK_STATE;
     
-    [Index(1)]
+    [Index(0)]
     public virtual Dictionary<Guid, NetworkIdentity> NetworkEntities { get; set; }
 
-    [Index(2)]
+    [Index(1)]
     public virtual Dictionary<Guid, NetworkComponent> NetworkComponents { get; set; }
 }
 
@@ -44,17 +41,8 @@ public class TransportMessage : NetworkMessage
 {
     public override MessageType Type => MessageType.TRANSPORT;
 
-    [Index(1)]
+    [Index(0)]
     public virtual TransportCode Code { get; set; }
-}
-
-[ZeroFormattable]
-public class MirrorMessage : NetworkMessage
-{
-    public override MessageType Type => MessageType.MIRROR;
-
-    [Index(1)]
-    public virtual string Message { get; set; }
 }
 
 [ZeroFormattable]
@@ -75,11 +63,9 @@ public class SyncMessage : NetworkMessage
 {
     public override MessageType Type => MessageType.SYNC;
     
-    [Index(1)]
+    [Index(0)]
     public virtual Guid ComponentID { get; set; }
     
-    [Index(2)]
+    [Index(1)]
     public virtual string FieldName { get; set; }
 }
-
-

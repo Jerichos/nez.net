@@ -19,11 +19,7 @@ public class SocketServer : SocketHandler, ISocketServerHandler
     private readonly Dictionary<ushort, Socket> _clientSockets = new();
     private readonly Dictionary<Socket, ushort> _clientIDs = new();
     
-    public SocketServer(int bufferSize, NetworkState networkState)
-    {
-        MaxBufferSize = bufferSize;
-        NetworkState = networkState;
-    }
+    public SocketServer(int bufferSize, NetworkState networkState) : base(bufferSize, networkState) { }
 
     public override void Stop()
     {
@@ -154,6 +150,9 @@ public class SocketServer : SocketHandler, ISocketServerHandler
             NetworkEntities = new Dictionary<Guid, NetworkIdentity>(NetworkState.GetNetworkEntities()),
             NetworkComponents = new Dictionary<Guid, NetworkComponent>(NetworkState.GetNetworkComponents())
         };
+
+        var serMessage = ZeroFormatterSerializer.Serialize(networkStateMessage);
+        var desMessage = ZeroFormatterSerializer.Deserialize<NetworkStateMessage>(serMessage);
         
         Send(clientId, networkStateMessage);
     }

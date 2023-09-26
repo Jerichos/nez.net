@@ -6,11 +6,7 @@ namespace nez.net.transport.socket;
 
 public class SocketClient : SocketHandler, ISocketClientHandler
 {
-    public SocketClient(int maxBufferSize, NetworkState networkState)
-    {
-        MaxBufferSize = maxBufferSize;
-        NetworkState = networkState;
-    }
+    public SocketClient(int maxBufferSize, NetworkState networkState) : base(maxBufferSize, networkState){ }
     
     public void Start(string address, int port)
     {

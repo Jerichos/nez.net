@@ -22,6 +22,8 @@ public class InitializationTests
     {
         _serverTransport.Stop();
         _clientTransport.Stop();
+        _clientTransport = null;
+        _serverTransport = null;
     }
     
     [Test]
@@ -51,8 +53,5 @@ public class InitializationTests
         // Replace the assertion below with the actual validation.
         // For example, you could check if the client has a valid socket connection.
         Assert.IsTrue(_clientTransport.IsClientRunning);
-        
-        _serverTransport.Server.Stop();
-        _clientTransport.Client.Stop();
     }
 }

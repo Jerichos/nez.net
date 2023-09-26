@@ -35,6 +35,10 @@ public class NetworkStateTest
         _serverNetworkState = new NetworkState();
         _clientNetworkState = new NetworkState();
 
+        int bufferSize = 1024;
+        _serverTransport.SetBufferSize(bufferSize);
+        _clientTransport.SetBufferSize(bufferSize);
+
         _core = new Core();
         
         _serverScene = new Scene();
@@ -107,7 +111,7 @@ public class NetworkStateTest
     public async Task TestMessageChunking()
     {
         // create n entities to server scene, it should exceed the max buffer size 512 bytes
-        int entityCount = 6;
+        int entityCount = 300;
         List<Entity> serverEntities = new List<Entity>();
         for (int i = 0; i < entityCount; i++)
         {
@@ -167,29 +171,40 @@ public class NetworkStateTest
     [Test, Timeout(1000)]
     public async Task TestConcurrentMessageChunking()
     {
-        int entityCountPerMessage = 6;
-        int totalMessages = 3; // Number of concurrent messages
+        int enityCount = 6;
+        int totalMessages = 1; // Number of concurrent messages
 
         List<TaskCompletionSource<bool>> tcsList = new List<TaskCompletionSource<bool>>(totalMessages);
         List<int> messageIndicesReceived = new List<int>();
 
-        for (int i = 0; i < totalMessages; i++)
+        for (int i = 0; i < totalMessages + 1; i++)
         {
             tcsList.Add(new TaskCompletionSource<bool>());
         }
+        
+        // Sending multiple messages from the server
+        List<Entity> serverEntities = new List<Entity>();
+        for (int j = 0; j < enityCount; j++)
+        {
+            serverEntities.Add(CreateServerEntity());
+        }
+        
         Stopwatch sw = Stopwatch.StartNew();
+
+        int messageID = 0;
         _clientTransport.Client.OnMessageReceived += message =>
         {
             if (message is NetworkStateMessage networkStateMessage)
             {
                 Console.WriteLine("TEST: NetworkStateMessage received in " + sw.ElapsedMilliseconds + "ms");
+                messageIndicesReceived.Add(messageID);
                 sw.Restart();
-                int messageIndex = message.MessageId;
-                if (networkStateMessage.NetworkComponents.Count == entityCountPerMessage &&
-                    networkStateMessage.NetworkEntities.Count == entityCountPerMessage)
+                if (networkStateMessage.NetworkComponents.Count == enityCount &&
+                    networkStateMessage.NetworkEntities.Count == enityCount)
                 {
-                    messageIndicesReceived.Add(messageIndex);
-                    tcsList[messageIndex].SetResult(true);
+                    // messageIndicesReceived.Add(messageIndex);
+                    tcsList[messageID].SetResult(true);
+                    messageID++;
                 }
             }
         };
@@ -197,24 +212,15 @@ public class NetworkStateTest
         _clientTransport.Client.Start(_ip, _port);
         sw.Restart();
 
-        // Sending multiple messages from the server
-        List<Entity> serverEntities = new List<Entity>();
-        for (int j = 0; j < entityCountPerMessage; j++)
-        {
-            serverEntities.Add(CreateServerEntity());
-        }
-        
         for (int i = 0; i < totalMessages; i++)
         {
             // Attach the message index to the entities or message to identify them in the client.
             // Send the state to the client
             _serverTransport.Server.GetNetworkState(out var networkEntities, out var networkComponents);
-            ushort messageIndex = (ushort)i;
             
             // send message to all clients
             _serverTransport.Server.Send(new NetworkStateMessage
             {
-                MessageId = messageIndex, // Attach the message index to the message
                 NetworkEntities = new Dictionary<Guid, NetworkIdentity>(networkEntities),
                 NetworkComponents = new Dictionary<Guid, NetworkComponent>(networkComponents)
             });
@@ -224,9 +230,21 @@ public class NetworkStateTest
         await Task.WhenAll(tcsList.Select(tcs => tcs.Task));
 
         // Assert the number of messages received
-        Assert.That(messageIndicesReceived.Count, Is.EqualTo(totalMessages));
+        Assert.That(messageIndicesReceived.Count, Is.EqualTo(totalMessages + 1)); // +1 because of the initial state message
 
-        // Perform additional validation, similar to your existing tests
+        // print bit rates
+        Console.WriteLine();
+        Console.WriteLine($"Server total bytes sent: {_serverTransport.Server.TotalBitsSent}");
+        Console.WriteLine($"Server total bytes received: {_serverTransport.Server.TotalBitsReceived}");
+        Console.WriteLine($"Client total bytes sent: {_clientTransport.Client.TotalBitsSent}");
+        Console.WriteLine($"Client total bytes received: {_clientTransport.Client.TotalBitsReceived}");
+        
+        // calculate ratio difference between server and client of total bits send and receive
+        double sendReceiveRatio = (double)_serverTransport.Server.TotalBitsSent / _clientTransport.Client.TotalBitsReceived;
+        // print ratios
+        Console.WriteLine();
+        Console.WriteLine($"Server sent to received ratio: {sendReceiveRatio}");
+        Console.WriteLine();
     }
 
 

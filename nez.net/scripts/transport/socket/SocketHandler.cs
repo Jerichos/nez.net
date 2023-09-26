@@ -21,6 +21,40 @@ public abstract class SocketHandler : ISocketHandler
     public Socket Socket { get; set; }
 
     private readonly Dictionary<int, List<byte>> _incompleteMessages = new();
+    
+    // performance
+    public long TotalBitsSent { get; private set; } = 0;
+    public long TotalBitsReceived { get; private set; } = 0;
+
+    public double SendBitRate => _sendBitRate;          // TODO: this is not updated
+    public double ReceiveBitRate => _receiveBitRate;    // TODO: this is not updated
+    
+    private double _sendBitRate;
+    private double _receiveBitRate;
+    
+    private long _lastTotalBitsSent = 0;
+    private long _lastTotalBitsReceived = 0;
+    
+    private DateTime _lastUpdateTime;
+
+    private readonly RingBuffer _ringBufferReceiver;
+    private readonly RingBuffer _ringBufferSender;
+    
+    private int _messageCounter = 0;
+    
+    protected SocketHandler(int maxBufferSize, NetworkState networkState)
+    {
+        _ringBufferReceiver = new RingBuffer(2048);
+        _ringBufferSender = new RingBuffer(2048);
+        
+        MaxBufferSize = maxBufferSize;
+        NetworkState = networkState;
+    }
+    
+    protected virtual void OnStart()
+    {
+        _lastUpdateTime = DateTime.UtcNow;
+    }
 
     protected void HandleReceive(IAsyncResult ar)
     {
@@ -32,21 +66,25 @@ public abstract class SocketHandler : ISocketHandler
         byte[] buffer = state.Item2;
         
         int receivedLength = connection.EndReceive(ar);
+        TotalBitsReceived += receivedLength * 8;
         
         if (receivedLength > 0)
         {
-            int totalChunks = BitConverter.ToInt16(buffer, buffer.Length - 2);
-            int chunkIndex = BitConverter.ToInt16(buffer, buffer.Length - 4);
-            int messageID = BitConverter.ToInt16(buffer, buffer.Length - 6);
+            _ringBufferReceiver.WriteBlock(new ArraySegment<byte>(buffer, 0, receivedLength).ToArray());
 
-            if (totalChunks == 0)
+            var (success, payloadLength, isChunked, messageID) = _ringBufferReceiver.ReadPacketHeader();
+            
+            if (!isChunked)
             {
-                var actualMessage = new ArraySegment<byte>(buffer, 0, receivedLength).ToArray();
+                var actualMessage = _ringBufferReceiver.Read(payloadLength);
                 NetworkMessage message = ZeroFormatterSerializer.Deserialize<NetworkMessage>(actualMessage);
                 HandleMessage(connection, message);
             }
             else
             {
+                // read chunk header
+                var (chunkIndex, totalChunks, payload) = _ringBufferReceiver.ReadChunkHeader(payloadLength);
+                
                 Console.WriteLine($"received chunk message [{chunkIndex+1}/{totalChunks}] of size {receivedLength}/{MaxBufferSize} [{messageID}]");
                 
                 if (!_incompleteMessages.ContainsKey(messageID))
@@ -55,8 +93,8 @@ public abstract class SocketHandler : ISocketHandler
                 }
                 
                 // Append this chunk to the buffer
-                _incompleteMessages[messageID].AddRange(new ArraySegment<byte>(buffer, 0, receivedLength - 6)); // -6 to exclude footer
-                if (AllChunksReceived((ushort)messageID, totalChunks, chunkIndex))
+                _incompleteMessages[messageID].AddRange(new ArraySegment<byte>(payload, 0, payload.Length));
+                if (AllChunksReceived(messageID, totalChunks, chunkIndex))
                 {
                     try
                     {
@@ -86,12 +124,12 @@ public abstract class SocketHandler : ISocketHandler
                 return;
             
             byte[] newBuffer = new byte[MaxBufferSize];
-            Console.WriteLine("BeginReceive");
             connection.BeginReceive(newBuffer, 0, newBuffer.Length, SocketFlags.None, HandleReceive, Tuple.Create(connection, newBuffer));
         }
     }
     
-    public static byte[] TrimEnd(byte[] array)
+    // TODO: check if it helps trim the end for ZeroFormatter deserialization to be faster
+    private static byte[] TrimEnd(byte[] array)
     {
         int lastIndex = Array.FindLastIndex(array, b => b != 0);
 
@@ -105,29 +143,38 @@ public abstract class SocketHandler : ISocketHandler
     
     public void Send(Socket connection, NetworkMessage message)
     {
-        byte[] serializedMessage = ZeroFormatterSerializer.Serialize(message);
-        Console.WriteLine($"Sending message of type {message.Type} of size {serializedMessage.Length}");
+        byte[] payload = ZeroFormatterSerializer.Serialize(message);
         
-        if(serializedMessage.Length > MaxBufferSize)
+        Console.WriteLine($"Sending message of type {message.Type} of size {payload.Length}");
+
+        ushort messageID = GetMessageIDInternal(connection);
+        if(payload.Length > MaxBufferSize - 5) // -5 to exclude header
         {
             // Chunk the message
-            ushort chunkCount = CalculateChunkCount(serializedMessage.Length);
-            ushort messageID = GetMessageIDInternal(connection);
-            for(ushort i = 0; i < chunkCount; i++)
+            byte chunkCount = CalculateChunkCount(payload.Length);
+            for(byte i = 0; i < chunkCount; i++)
             {
-                // Create and send chunk
-                var chunk = CreateChunkWithFooter(serializedMessage, i, chunkCount, messageID);
-                Console.WriteLine($"sending message chunk [{i+1}/{chunkCount}] of size {chunk.Length}/{MaxBufferSize} [{message.Type}] ID: {messageID}");
-                Send(connection, chunk);
+                _ringBufferSender.AddPacketToRingBuffer(payload, true, messageID, i, chunkCount, MaxBufferSize);
+                SendPacketFromRingBuffer(connection);
             }
         }
         else
         {
-            Console.WriteLine($"sending message of size {serializedMessage.Length}/{MaxBufferSize} [{message.Type}]");
-            Send(connection, serializedMessage);
+            _ringBufferSender.AddPacketToRingBuffer(payload, false, messageID);
+            SendPacketFromRingBuffer(connection);
         }
     }
-    
+
+    private void SendPacketFromRingBuffer(Socket connection)
+    {
+        Send(connection, _ringBufferSender.ReadSendPacket());
+    }
+
+    private byte[] CreateMessageChunk(int headerLength, ushort chunkIndex, ushort chunkCount, byte[] payload, int maxBufferSize)
+    {
+        throw new NotImplementedException();
+    }
+
     private readonly Dictionary<ushort, HashSet<int>> _receivedChunks = new();
     
     // Placeholder for more sophisticated chunk-tracking logic
@@ -145,6 +192,32 @@ public abstract class SocketHandler : ISocketHandler
             Console.WriteLine("all chunks received");
 
         return allChunksReceived;
+    }
+    
+    public double GetSendBitRate()
+    {
+        UpdateBitRate();
+        return _sendBitRate;
+    }
+    
+    public double GetReceiveBitRate()
+    {
+        UpdateBitRate();
+        return _receiveBitRate;
+    }
+    
+    public void UpdateBitRate()
+    {
+        DateTime now = DateTime.UtcNow;
+        double elapsedSeconds = (now - _lastUpdateTime).TotalSeconds;
+        
+        _sendBitRate = (TotalBitsSent - _lastTotalBitsSent) / elapsedSeconds;
+        _receiveBitRate = (TotalBitsReceived - _lastTotalBitsReceived) / elapsedSeconds;
+        
+        // reset
+        _lastTotalBitsSent = TotalBitsSent;
+        _lastTotalBitsReceived = TotalBitsReceived;
+        _lastUpdateTime = now;
     }
     
     // create method for handling NetworkMessage
@@ -189,41 +262,14 @@ public abstract class SocketHandler : ISocketHandler
         }
     }
     
-    
-    private ushort CalculateChunkCount(int messageSize)
+    private byte CalculateChunkCount(int messageSize)
     {
         int headerSize = 8; // 4 bytes for chunkIndex and 4 bytes for totalChunks
         int maxDataSize = MaxBufferSize - headerSize;
 
-        return (ushort)Math.Ceiling((double)messageSize / maxDataSize);
+        return (byte)Math.Ceiling((double)messageSize / maxDataSize);
     }
     
-    private byte[] CreateChunkWithFooter(byte[] serializedMessage, ushort chunkIndex, ushort totalChunks, ushort messageID)
-    {
-        int footerSize = 6; // 2 chunk, 2 totalChunks, 2 messageID
-        int maxDataSize = MaxBufferSize - footerSize;
-
-        int offset = chunkIndex * maxDataSize;
-        int length = Math.Min(maxDataSize, serializedMessage.Length - offset);
-
-        byte[] footer = new byte[footerSize];
-        BitConverter.GetBytes(messageID).CopyTo(footer, 0);
-        BitConverter.GetBytes(chunkIndex).CopyTo(footer, 2);
-        BitConverter.GetBytes(totalChunks).CopyTo(footer, 4);
-        
-        // int messageID = BitConverter.ToInt16(buffer, buffer.Length - 2);
-        // int chunkIndex = BitConverter.ToInt16(buffer, buffer.Length - 4);
-        // int totalChunks = BitConverter.ToInt16(buffer, buffer.Length - 6);
-
-        // Create the chunk with the footer at the end
-        byte[] chunk = new byte[MaxBufferSize]; // Initialize to MaxBufferSize
-        Array.Copy(serializedMessage, offset, chunk, 0, length);
-        Array.Copy(footer, 0, chunk, MaxBufferSize - footerSize, footerSize);
-
-        return chunk;
-    }
-    
-    private int _messageCounter = 0;
     private ushort GetMessageIDInternal(Socket connection)
     {
         int messageID = GetConnectionID(connection) + _messageCounter++;
@@ -237,10 +283,10 @@ public abstract class SocketHandler : ISocketHandler
     }
     
     protected abstract ushort GetConnectionID(Socket connection);
-
     
     private void Send(Socket connection, byte[] buffer)
     {
+        TotalBitsSent += buffer.Length * 8;
         connection.BeginSend(buffer, 0, buffer.Length, SocketFlags.None, OnSendCallback, connection);
     }
     
