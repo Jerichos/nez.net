@@ -9,7 +9,7 @@ namespace nez.net.test
 [TestFixture]
 public class ConnectionTests
 {
-    private TaskCompletionSource<bool> _clientConnectCallbackCompleted;
+    private TaskCompletionSource<bool> _clientNotConnectedTask;
     
     private SocketTransport _serverTransport;
     private SocketTransport[] _clientTransports;
@@ -59,7 +59,7 @@ public class ConnectionTests
             Thread.SpinWait(10);
         }
             
-        _clientConnectCallbackCompleted = new TaskCompletionSource<bool>();
+        _clientNotConnectedTask = new TaskCompletionSource<bool>();
 
         _overLimitClient.Client.OnMessageReceived += (socket, message) =>
         {
@@ -67,17 +67,17 @@ public class ConnectionTests
             {
                 if (transportMessage.Code == TransportCode.MAXIMUM_CONNECTION_REACHED)
                 {
-                    _clientConnectCallbackCompleted.SetResult(false);
+                    _clientNotConnectedTask.SetResult(false);
                 }
             }
         };
         
         _overLimitClient.Client.Start("127.0.0.1", 5000);
             
-        await Task.WhenAll(_clientConnectCallbackCompleted.Task);
+        await Task.WhenAll(_clientNotConnectedTask.Task);
         // Assert
         // Check if overLimitConnectionResult is false or another way to determine if the connection failed due to exceeding the limit.
-        Assert.IsFalse(_clientConnectCallbackCompleted.Task.Result);
+        Assert.IsFalse(_clientNotConnectedTask.Task.Result);
 
         // Cleanup
         _serverTransport.Server.Stop();
@@ -88,30 +88,29 @@ public class ConnectionTests
         _overLimitClient.Client.Stop();
     }
 
-    [Test]
+    [Test, Timeout(10000)]
     public async Task TestFailedConnections()
     {
         // Act
-        _clientConnectCallbackCompleted = new TaskCompletionSource<bool>();
+        _clientNotConnectedTask = new TaskCompletionSource<bool>();
 
-        _clientTransport.Client.OnMessageReceived += (connection, message) =>
+        _clientTransport.Client.OnMessageReceived += (_, message) =>
         {
             if(message is TransportMessage transportMessage)
             {
-                if (transportMessage.Code != TransportCode.CLIENT_CONNECTED)
+                if (transportMessage.Code != TransportCode.CONNECTED)
                 {
-                    _clientConnectCallbackCompleted.SetResult(true);
+                    _clientNotConnectedTask.SetResult(true);
                 }
             }
         };
         
         _clientTransport.Client.Start("127.0.0.1", 1234);
-        
-        
-        await Task.WhenAll(_clientConnectCallbackCompleted.Task);
+
+        await _clientNotConnectedTask.Task;
         
         // Assert
-        Assert.IsFalse(_clientConnectCallbackCompleted.Task.Result);
+        Assert.IsTrue(_clientNotConnectedTask.Task.Result);
     }
 }
 }

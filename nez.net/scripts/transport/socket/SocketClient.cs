@@ -16,10 +16,11 @@ public class SocketClient : SocketHandler, ISocketClientHandler
     // Initialize the client socket and connect to the server
     private void ConnectClient(string ipAddress, int port)
     {
+        TransportCode code = TransportCode.CLIENT_ERROR;
         if (IsRunning)
         {
             Debug.Warn("client is already running");
-            RaiseEvent(OnTransportMessage, TransportCode.CLIENT_ALREADY_CONNECTED);
+            
             return;
         }
         try
@@ -41,33 +42,35 @@ public class SocketClient : SocketHandler, ISocketClientHandler
                 byte[] buffer = new byte[MaxBufferSize];
                 Socket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, HandleReceive, Tuple.Create(Socket, buffer));
                 IsClosing = false;
-                RaiseEvent(OnTransportMessage, TransportCode.CLIENT_CONNECTED);
+                code = TransportCode.CONNECTED;
             }
             else
             {
                 Socket.Close();
                 Debug.Warn("connection timed out");
-                RaiseEvent(OnTransportMessage, TransportCode.CLIENT_CONNECTION_TIMEOUT);
+                code = TransportCode.CONNECTION_TIMETOUT;
             }
         }
         catch (SocketException e)
         {
             Debug.Warn($"SocketException: {e}");
             Debug.Warn($"Stack Trace: {e.StackTrace}");
-            RaiseEvent(OnTransportMessage, TransportCode.CLIENT_ERROR);
+            code = TransportCode.CONNECTION_ERROR;
         }
         catch (TimeoutException e)
         {
             Debug.Warn($"TimeoutException: {e}");
             Debug.Warn($"Stack Trace: {e.StackTrace}");
-            RaiseEvent(OnTransportMessage, TransportCode.CLIENT_CONNECTION_TIMEOUT);
+            code = TransportCode.CONNECTION_TIMETOUT;
         }
         catch (Exception e)
         {
             Debug.Warn($"An unknown error occurred: {e}");
             Debug.Warn($"Stack Trace: {e.StackTrace}");
-            RaiseEvent(OnTransportMessage, TransportCode.CLIENT_ERROR);
+            code = TransportCode.CLIENT_ERROR;
         }
+        
+        RaiseEvent(OnMessageReceived, Socket, new TransportMessage {Code = code});
     }
 
     protected override ushort GetConnectionID(Socket connection)

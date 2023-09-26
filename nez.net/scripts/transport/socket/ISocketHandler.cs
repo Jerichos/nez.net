@@ -14,7 +14,6 @@ public interface ISocketHandler
     int MaxBufferSize { get; set; }
 
     Delegate<Socket, NetworkMessage> OnMessageReceived { get; set; }
-    Delegate<TransportCode> OnTransportMessage { get; set; }
     
     // performance
     public long TotalBitsSent { get; }

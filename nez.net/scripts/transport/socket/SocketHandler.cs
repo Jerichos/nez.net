@@ -6,7 +6,7 @@ using ZeroFormatter;
 
 namespace nez.net.transport.socket;
 
-public delegate void Delegate<in T>(params T[] args);
+// public delegate void Delegate<in T>(T arg);
 public delegate void Delegate<in T1, in T2>(T1 arg1, T2 arg2);
 
 public abstract class SocketHandler : ISocketHandler
@@ -19,7 +19,6 @@ public abstract class SocketHandler : ISocketHandler
     public NetworkState NetworkState { get; set; }
     
     public Delegate<Socket, NetworkMessage> OnMessageReceived { get; set; }
-    public Delegate<TransportCode> OnTransportMessage { get; set; }
     
     public Socket Socket { get; set; }
 
@@ -63,43 +62,53 @@ public abstract class SocketHandler : ISocketHandler
 
     protected void HandleReceive(IAsyncResult ar)
     {
-        if(!IsRunning || IsClosing)
+        if (!IsRunning || IsClosing)
             return;
-        
+
         var state = (Tuple<Socket, byte[]>)ar.AsyncState;
         Socket connection = state.Item1;
         byte[] buffer = state.Item2;
-        
+
         int receivedLength = connection.EndReceive(ar);
         TotalBitsReceived += receivedLength * 8;
-        
+
         if (receivedLength > 0)
         {
             _ringBufferReceiver.WriteBlock(new ArraySegment<byte>(buffer, 0, receivedLength).ToArray());
-            var (success, payloadLength, isChunked, messageID) = _ringBufferReceiver.ReadPacketHeader();
 
-            if (success)
+            int iteration = 0;
+            // Loop to handle multiple messages
+            while (true)
             {
+                
+                var (success, payloadLength, isChunked, messageID) = _ringBufferReceiver.ReadPacketHeader();
+                if (!success)
+                {
+                    break; // Exit loop if no more complete messages are in the buffer
+                }
+
+                NetworkMessage message = null;
                 if (isChunked)
                 {
                     var (chunkIndex, chunkCount, payload) = _ringBufferReceiver.ReadChunkHeader(payloadLength);
-                    NetworkMessage message = _messageHandler.HandleReceivedData(payload, messageID, true, chunkIndex, chunkCount);
-                    if(message != null)
-                        RaiseEvent(OnMessageReceived, connection, message);
+                    message = _messageHandler.HandleReceivedData(payload, messageID, true, chunkIndex, chunkCount);
                 }
                 else
                 {
                     var payload = _ringBufferReceiver.Read(payloadLength);
-                    NetworkMessage message = _messageHandler.HandleReceivedData(payload, messageID, false, 0, 0);
-                    if(message != null)
-                        RaiseEvent(OnMessageReceived, connection, message);
+                    message = _messageHandler.HandleReceivedData(payload, messageID, false, 0, 0);
+                }
+
+                if (message != null)
+                {
+                    RaiseEvent(OnMessageReceived, connection, message);
                 }
             }
-            
+
             // Start another receive operation
-            if(IsClosing || !IsRunning)
+            if (IsClosing || !IsRunning)
                 return;
-            
+
             byte[] newBuffer = new byte[MaxBufferSize];
             connection.BeginReceive(newBuffer, 0, newBuffer.Length, SocketFlags.None, HandleReceive, Tuple.Create(connection, newBuffer));
         }
@@ -125,6 +134,29 @@ public abstract class SocketHandler : ISocketHandler
         else
         {
             _ringBufferSender.AddPacketToRingBuffer(payload, false, messageID);
+            SendPacketFromRingBuffer(connection);
+        }
+    }
+
+    public void SendWithoutMessageID(Socket connection, NetworkMessage message)
+    {
+        byte[] payload = ZeroFormatterSerializer.Serialize(message);
+        
+        Console.WriteLine($"Sending message of type {message.Type} of size {payload.Length}");
+
+        if(payload.Length > MaxBufferSize - 5) // -5 to exclude header
+        {
+            // Chunk the message
+            byte chunkCount = CalculateChunkCount(payload.Length);
+            for(byte i = 0; i < chunkCount; i++)
+            {
+                _ringBufferSender.AddPacketToRingBuffer(payload, true, 7777, i, chunkCount, MaxBufferSize);
+                SendPacketFromRingBuffer(connection);
+            }
+        }
+        else
+        {
+            _ringBufferSender.AddPacketToRingBuffer(payload, false, 7777);
             SendPacketFromRingBuffer(connection);
         }
     }
@@ -172,6 +204,7 @@ public abstract class SocketHandler : ISocketHandler
     private ushort GetMessageIDInternal(Socket connection)
     {
         int messageID = GetConnectionID(connection) + _messageCounter++;
+        
         if (messageID > ushort.MaxValue)
         {
             _messageCounter = 0;
@@ -234,12 +267,12 @@ public abstract class SocketHandler : ISocketHandler
     }
     
     // Safely invoke an event
-    protected void RaiseEvent<T>(Delegate<T> eventToRaise, T arg)
-    {
-        Delegate<T> handler = eventToRaise;
-        handler?.Invoke(arg);
-    }
-    
+    // protected void RaiseEvent<T>(Delegate<T> eventToRaise, T arg)
+    // {
+    //     Delegate<T> handler = eventToRaise;
+    //     handler?.Invoke(arg);
+    // }
+    //
     protected void RaiseEvent<T1, T2>(Delegate<T1, T2> eventToRaise, T1 arg1, T2 arg2)
     {
         Delegate<T1, T2> handler = eventToRaise;

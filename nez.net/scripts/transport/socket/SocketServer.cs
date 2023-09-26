@@ -89,8 +89,8 @@ public class SocketServer : SocketHandler, ISocketServerHandler
             // This is crucial as failing to end the operation could lead to resource leaks
             Socket tempSocket = Socket.EndAccept(ar);
             
-            // notify client that maximum connections reached
-            Send(tempSocket, new TransportMessage{Code = TransportCode.MAXIMUM_CONNECTION_REACHED});
+            // TODO: this causes exception, because clientID is not found for this socket connection
+            SendWithoutMessageID(tempSocket, new TransportMessage{Code = TransportCode.MAXIMUM_CONNECTION_REACHED});
             tempSocket.Close();
         }
         else
@@ -107,7 +107,6 @@ public class SocketServer : SocketHandler, ISocketServerHandler
             byte[] buffer = new byte[MaxBufferSize];
             clientSocket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, HandleReceive, Tuple.Create(clientSocket, buffer));
             OnClientConnected((ushort)clientID);
-            
         }
 
         // Continue accepting more clients.
@@ -120,7 +119,10 @@ public class SocketServer : SocketHandler, ISocketServerHandler
         
         // throw exception if there is no connection
         if (!_clientIDs.ContainsKey(connection))
-            throw new Exception("Connection not found.");
+        {
+            // TODO: find a way to handle this
+            return ushort.MaxValue;
+        }
         
         return _clientIDs[connection];
     }
