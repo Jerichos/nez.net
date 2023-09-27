@@ -30,9 +30,9 @@ public abstract class NetworkComponent : Nez.Component
         serverHandler.NetworkState.RegisterNetworkComponent(this);
     }
 
-    internal void HandleSyncAttributeInternal()
+    public void SendCommandMessageInternal()
     {
-        
+        Console.WriteLine("call SendCommandMessageInternal");
     }
 
     public override void OnAddedToEntity()

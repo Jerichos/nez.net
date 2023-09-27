@@ -4,13 +4,22 @@
         <TargetFramework>net6.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-
+        <DisableFody>false</DisableFody>
         <IsPackable>false</IsPackable>
+        <OutputType>Library</OutputType>
+        <LangVersion>10</LangVersion>
     </PropertyGroup>
-
     <ItemGroup>
+        <WeaverFiles Include="$(SolutionDir)nez.net\nez.net\bin\$(Configuration)\net6.0\nez.net.dll" WeaverClassNames="NezNetWeaver" />
+    </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="Alexinea.ZeroFormatter" Version="1.6.4" />
+        <PackageReference Include="Fody" Version="6.8.0">
+          <PrivateAssets>all</PrivateAssets>
+          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+        </PackageReference>
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.1.0" />
-        <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.1.303" />
+        <PackageReference Include="MonoGame.Framework.DesktopGL" Version="3.8.0.1641" />
         <PackageReference Include="NUnit" Version="3.13.3" />
         <PackageReference Include="NUnit3TestAdapter" Version="4.2.1" />
         <PackageReference Include="NUnit.Analyzers" Version="3.3.0" />
@@ -20,5 +29,27 @@
     <ItemGroup>
       <ProjectReference Include="..\nez.net\nez.net.csproj" />
     </ItemGroup>
+
+    <ItemGroup>
+      <Reference Include="Fody">
+        <HintPath>C:\Users\macku\.nuget\packages\fody\6.8.0\netstandardtask\Fody.dll</HintPath>
+      </Reference>
+      <Reference Include="FodyCommon">
+        <HintPath>C:\Users\macku\.nuget\packages\fody\6.8.0\netstandardtask\FodyCommon.dll</HintPath>
+      </Reference>
+      <Reference Include="FodyHelpers">
+        <HintPath>C:\Users\macku\.nuget\packages\fody\6.8.0\netstandardtask\FodyHelpers.dll</HintPath>
+      </Reference>
+      <Reference Include="FodyIsolated">
+        <HintPath>C:\Users\macku\.nuget\packages\fody\6.8.0\netstandardtask\FodyIsolated.dll</HintPath>
+      </Reference>
+      <Reference Include="Mono.Cecil">
+        <HintPath>C:\Users\macku\.nuget\packages\fody\6.8.0\netstandardtask\Mono.Cecil.dll</HintPath>
+      </Reference>
+    </ItemGroup>
+
+    <Target Name="PreBuild" BeforeTargets="PreBuildEvent">
+      <Exec Command="xcopy /y &quot;$(SolutionDir)nez.net\nez.net\bin\Debug\net6.0\nez.net.dll&quot; &quot;$(SolutionDir)nez.net\nez.net.test\bin\Debug\net6.0\&quot;" />
+    </Target>
 
 </Project>

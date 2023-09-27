@@ -9,6 +9,9 @@ public class TestNetworkComponent : NetworkComponent
     public TestNetworkComponent() { }
     public TestNetworkComponent(ISocketServerHandler serverHandler) : base(serverHandler) { }
 
-    [Sync] 
-    private float TestFloat = 1;
+    [Command]
+    public void RequestTestCommand()
+    {
+        Console.WriteLine("Test command");
+    }
 }

@@ -1,7 +1,5 @@
 ﻿using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using Microsoft.Xna.Framework;
 using nez.net.components;
 using ZeroFormatter;
 using ZeroFormatter.Formatters;
@@ -53,8 +51,7 @@ public class NetworkStateFormatter<TTypeResolver> : Formatter<TTypeResolver, Dic
             int size;
             var kvp = formatter.Deserialize(ref bytes, offset, tracker, out size);
             offset += size;
-
-            dict.TryAdd(kvp.Key, kvp.Value);
+            dict.Add(kvp.Key, kvp.Value);
         }
 
         byteSize = offset - startOffset;

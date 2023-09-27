@@ -2,6 +2,7 @@
 using System.Linq;
 using Fody;
 using Mono.Cecil;
+using Mono.Cecil.Cil;
 
 namespace nez.net.weave;
 
@@ -9,17 +10,55 @@ public class NezNetWeaver : BaseModuleWeaver
 {
     public override void Execute()
     {
-        foreach (var type in ModuleDefinition.Types)
+        System.Diagnostics.Debugger.Launch();
+        WriteDebug("Entering Execute");
+
+        foreach (var type in ModuleDefinition.GetTypes())
         {
+            WriteDebug($"Processing type {type.Name}");
             foreach (var method in type.Methods)
             {
-                if (MethodHasCommandAttribute(method))
+                WriteDebug($"Checking method {method.Name}");
+                if (method.HasCustomAttributes && method.CustomAttributes.Any(a => a.AttributeType.Name == "CommandAttribute"))
                 {
-                    CacheMethodById(method);
+                    WriteDebug("Found method with CommandAttribute");
+                
+                    // Remove the original method body
+                    method.Body.Instructions.Clear();
+
+                    var sendCommandMethod = FindMethodInTypeAndBaseTypes(type, "SendCommandMessageInternal");
+                    if (sendCommandMethod != null)
+                    {
+                        var importedMethod = ModuleDefinition.ImportReference(sendCommandMethod);
+                        var processor = method.Body.GetILProcessor();
+                        processor.Append(processor.Create(OpCodes.Call, importedMethod));
+                        processor.Append(processor.Create(OpCodes.Ret));
+                    }
+                    else
+                    {
+                        WriteDebug($"Could not find SendCommandMessageInternal in type {type.Name} or its base types");
+                    }
+
                 }
             }
         }
     }
+    
+    public MethodDefinition FindMethodInTypeAndBaseTypes(TypeDefinition type, string methodName)
+    {
+        while (type != null)
+        {
+            var method = type.Methods.FirstOrDefault(m => m.Name == methodName);
+            if (method != null)
+            {
+                return method;
+            }
+
+            type = type.BaseType?.Resolve();
+        }
+        return null;
+    }
+
 
     private bool MethodHasCommandAttribute(MethodDefinition method)
     {
@@ -38,4 +77,6 @@ public class NezNetWeaver : BaseModuleWeaver
     {
         return Enumerable.Empty<string>();
     }
+    
+    public override bool ShouldCleanReference => true;
 }
