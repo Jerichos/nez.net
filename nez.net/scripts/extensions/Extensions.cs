@@ -39,7 +39,7 @@ public static class Extensions
             throw new System.Exception("Entity does not have NetworkIdentity");
         }
 
-        entity.AddComponent(component);
+        // entity.AddComponent(component);
         component.NetworkIdentity = networkIdentity;
         return component;
     }

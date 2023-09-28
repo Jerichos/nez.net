@@ -125,7 +125,7 @@ public class NetworkState
                     
                     // get matching network indentity
                     NetworkIdentity networkIdentity = GetNetworkEntity(receivedNetworkComponent.IdentityID);
-                    networkIdentity.Entity.AddComponent(receivedNetworkComponent);
+                    // networkIdentity.Entity.AddComponent(receivedNetworkComponent);
                     
                     _networkComponents.TryAdd(networkComponentPair.Key, receivedNetworkComponent);
                 }

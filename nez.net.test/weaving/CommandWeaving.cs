@@ -11,5 +11,19 @@ public class CommandWeaving
     {
         TestNetworkComponent testNetworkComponent = new();
         testNetworkComponent.RequestTestCommand();
+        testNetworkComponent.RequestCommand();
+        
+        TestWeavedNewMethod("RequestTestCommand");
+        TestWeavedNewMethod("RequestCommand");
+    }
+
+    private void TestWeavedNewMethod(string commandMethodName)
+    {
+        var type = typeof(TestNetworkComponent); // Replace with the actual class name
+        Assert.IsNotNull(type.GetMethod("Invoke" + commandMethodName)); // Replace with the actual method name
+
+        var instance = new TestNetworkComponent(); // Replace with the actual class name and constructor parameters if any
+        var method = type.GetMethod("Invoke" + commandMethodName); // Replace with the actual method name
+        var result = method.Invoke(instance, new object[] { /* parameters */ });
     }
 }

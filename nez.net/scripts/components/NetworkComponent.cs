@@ -5,7 +5,7 @@ using nez.net.transport.socket;
 
 namespace nez.net.components;
 
-public abstract class NetworkComponent : Nez.Component
+public abstract class NetworkComponent : Component
 {
     public Guid ComponentID { get; internal set; } // Unique ID to identify this component over the network
     public Guid IdentityID { get; internal set; } // Unique ID to identify to which entity this component belongs
@@ -30,14 +30,14 @@ public abstract class NetworkComponent : Nez.Component
         serverHandler.NetworkState.RegisterNetworkComponent(this);
     }
 
-    public void SendCommandMessageInternal()
+    protected void SendCommandInternal()
     {
-        Console.WriteLine("call SendCommandMessageInternal");
+        Console.WriteLine("33");
     }
 
-    public override void OnAddedToEntity()
+    public void OnAddedToEntity()
     {
-        // remove component if entity does not have NetworkIdentity
+        // // remove component if entity does not have NetworkIdentity
         if (!Entity.HasComponent<NetworkIdentity>())
         {
             // Log a message or throw an exception to make debugging easier
@@ -46,7 +46,7 @@ public abstract class NetworkComponent : Nez.Component
         }
         
         // register entity
-        // TODO: add easier way to get serverHandler
-        RegisterComponent(_serverHandler);
+        // // TODO: add easier way to get serverHandler
+        // RegisterComponent(_serverHandler);
     }
 }

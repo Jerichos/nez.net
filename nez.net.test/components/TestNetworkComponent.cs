@@ -5,13 +5,18 @@ namespace nez.net.test.components;
 
 public class TestNetworkComponent : NetworkComponent
 {
-    // TODO: IL weave this
     public TestNetworkComponent() { }
     public TestNetworkComponent(ISocketServerHandler serverHandler) : base(serverHandler) { }
 
     [Command]
     public void RequestTestCommand()
     {
-        Console.WriteLine("Test command");
+        Console.WriteLine("1");
+    }
+
+    [Command]
+    public void RequestCommand()
+    {
+        Console.WriteLine("11");
     }
 }

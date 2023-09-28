@@ -10,11 +10,13 @@ public class NezNetWeaver : BaseModuleWeaver
 {
     public override void Execute()
     {
-        System.Diagnostics.Debugger.Launch();
+        // System.Diagnostics.Debugger.Launch();
         WriteDebug("Entering Execute");
-
+        
         foreach (var type in ModuleDefinition.GetTypes())
         {
+            List<MethodDefinition> _newMethods = new();
+            
             WriteDebug($"Processing type {type.Name}");
             foreach (var method in type.Methods)
             {
@@ -23,23 +25,44 @@ public class NezNetWeaver : BaseModuleWeaver
                 {
                     WriteDebug("Found method with CommandAttribute");
                 
+                    MethodDefinition newMethod = new MethodDefinition("Invoke" + method.Name, method.Attributes, method.ReturnType);
+                    newMethod.Body = new MethodBody(newMethod);
+                    var il = newMethod.Body.GetILProcessor();
+                    foreach (var instruction in method.Body.Instructions)
+                        il.Append(instruction);
+                    foreach (var variable in method.Body.Variables)
+                        newMethod.Body.Variables.Add(variable);
+                    _newMethods.Add(newMethod);
+                    // type.Methods.Add(newMethod);
+                    
                     // Remove the original method body
                     method.Body.Instructions.Clear();
-
-                    var sendCommandMethod = FindMethodInTypeAndBaseTypes(type, "SendCommandMessageInternal");
+                    
+                    var sendCommandMethod = FindMethodInTypeAndBaseTypes(type, "SendCommandInternal");
                     if (sendCommandMethod != null)
                     {
                         var importedMethod = ModuleDefinition.ImportReference(sendCommandMethod);
                         var processor = method.Body.GetILProcessor();
+
+                        // Load 'this' onto the stack
+                        processor.Append(processor.Create(OpCodes.Ldarg_0));
+    
+                        // Call the internal method
                         processor.Append(processor.Create(OpCodes.Call, importedMethod));
+    
+                        // Return from the method
                         processor.Append(processor.Create(OpCodes.Ret));
                     }
                     else
                     {
                         WriteDebug($"Could not find SendCommandMessageInternal in type {type.Name} or its base types");
                     }
-
                 }
+            }
+            
+            foreach (var newMethod in _newMethods)
+            {
+                type.Methods.Add(newMethod);
             }
         }
     }
@@ -78,5 +101,5 @@ public class NezNetWeaver : BaseModuleWeaver
         return Enumerable.Empty<string>();
     }
     
-    public override bool ShouldCleanReference => true;
+    public override bool ShouldCleanReference => false;
 }
